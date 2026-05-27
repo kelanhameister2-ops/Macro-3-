@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="theme-color" content="#080808"/>
+  <title>IronIQ</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏋️</text></svg>"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body,#root{height:100%;background:#080808;overflow:hidden}
+    body{font-family:system-ui,-apple-system,sans-serif;color:#F0F0F0;-webkit-font-smoothing:antialiased}
+    #loading{position:fixed;inset:0;background:#080808;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999}
+    .spinner{width:36px;height:36px;border:3px solid #222;border-top-color:#4D9EF8;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div style="font-size:52px;margin-bottom:4px">🏋️</div>
+    <div class="spinner"></div>
+    <div style="font-size:13px;color:#555;margin-top:4px">Loading IronIQ...</div>
+  </div>
+  <div id="root"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide-react@0.383.0/dist/umd/lucide-react.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js" crossorigin="anonymous"></script>
+
+  <script type="text/babel">
+
+const { useState, useReducer, useRef, useMemo, useCallback } = React;
+const { LayoutDashboard, UtensilsCrossed, BarChart2, MoreHorizontal, Plus, ChevronRight, ChevronLeft, Search, Zap, TrendingUp, TrendingDown, Droplets, Scale, Activity, Edit2, User, Settings, Download, Trash2, X, Calendar, Star, ScanLine, Info, CheckCircle, Layers, Brain, Target, Camera, Dumbbell, RefreshCw, Sliders, AlertCircle } = lucideReact;
+
+// ── LIGHTWEIGHT CHART COMPONENTS (no external deps) ──────────────────
+function SVGLineChart({data, dataKey, color="#4D9EF8", height=100, width="100%"}){
+  if(!data||data.length<2) return <div style={{height,display:"flex",alignItems:"center",justifyContent:"center",color:"#404040",fontSize:11}}>No data</div>;
+  const vals = data.map(d=>+d[dataKey]||0).filter(v=>v>0);
+  if(!vals.length) return <div style={{height,display:"flex",alignItems:"center",justifyContent:"center",color:"#404040",fontSize:11}}>No data</div>;
+  const mn=Math.min(...vals), mx=Math.max(...vals), rng=mx-mn||1;
+  const W=300, H=height-20, PAD=4;
+  const pts = data.map((d,i)=>{
+    const v=+d[dataKey]||0;
+    const x=(i/(data.length-1))*(W-PAD*2)+PAD;
+    const y=H-((v-mn)/rng)*(H-PAD*2)-PAD;
+    return `${x},${y}`;
+  }).join(" ");
+  const labels = data.filter((_,i)=>i===0||i===data.length-1||i===Math.floor(data.length/2));
+  return(
+    <svg viewBox={`0 0 ${W} ${H+20}`} style={{width:"100%",height}} preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+      {data.map((d,i)=>{
+        const v=+d[dataKey]||0;
+        if(!v) return null;
+        const x=(i/(data.length-1))*(W-PAD*2)+PAD;
+        const y=H-((v-mn)/rng)*(H-PAD*2)-PAD;
+        return <circle key={i} cx={x} cy={y} r="3" fill={color}/>;
+      })}
+      {data.map((d,i)=>{
+        if(i!==0&&i!==data.length-1&&i!==Math.floor(data.length/2)) return null;
+        const x=(i/(data.length-1))*(W-PAD*2)+PAD;
+        return <text key={i} x={x} y={H+14} textAnchor="middle" fontSize="8" fill="#606060">{d.date||""}</text>;
+      })}
+    </svg>
+  );
+}
+
+function SVGBarChart({data, dataKey, color="#4D9EF8", refLine=0, height=120, getColor=null}){
+  if(!data||!data.length) return <div style={{height,display:"flex",alignItems:"center",justifyContent:"center",color:"#404040",fontSize:11}}>No data</div>;
+  const vals = data.map(d=>+d[dataKey]||0);
+  const mx = Math.max(...vals, refLine||0, 1);
+  const W=300, H=height-20, PAD=2;
+  const bw = (W - PAD*2*(data.length+1)) / data.length;
+  return(
+    <svg viewBox={`0 0 ${W} ${H+20}`} style={{width:"100%",height}} preserveAspectRatio="none">
+      {refLine>0&&<line x1={PAD} y1={H-((refLine/mx)*(H-PAD*2))-PAD} x2={W-PAD} y2={H-((refLine/mx)*(H-PAD*2))-PAD} stroke="#FF6B47" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"/>}
+      {data.map((d,i)=>{
+        const v=+d[dataKey]||0;
+        const bh=Math.max((v/mx)*(H-PAD*2),v>0?2:0);
+        const x=PAD*(i+1)+bw*i;
+        const y=H-bh-PAD;
+        const c = getColor ? getColor(d,i) : color;
+        return <rect key={i} x={x} y={y} width={bw} height={bh} fill={c} rx="2"/>;
+      })}
+      {data.map((d,i)=>{
+        if(i!==0&&i!==data.length-1&&i!==Math.floor(data.length/2)) return null;
+        const x=PAD*(i+1)+bw*i+bw/2;
+        return <text key={i} x={x} y={H+14} textAnchor="middle" fontSize="8" fill="#606060">{d.date||""}</text>;
+      })}
+    </svg>
+  );
+}
+
+function SVGSparkline({data, dataKey, color="#B39DFA", height=48}){
+  if(!data||data.length<2) return <div style={{height}}/>;
+  const vals=data.map(d=>+d[dataKey]||0).filter(v=>v>0);
+  if(vals.length<2) return <div style={{height}}/>;
+  const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||1;
+  const W=200,H=height,PAD=3;
+  const pts=data.filter(d=>+d[dataKey]>0).map((d,i,arr)=>{
+    const x=(i/(arr.length-1))*(W-PAD*2)+PAD;
+    const y=H-((+d[dataKey]-mn)/rng)*(H-PAD*2)-PAD;
+    return `${x},${y}`;
+  }).join(" ");
+  return(
+    <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height}} preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function MiniBarRow({val, max, color}){
+  const p = max>0 ? Math.min((val/max)*100, 100) : 0;
+  return <div style={{height:4,background:"#262626",borderRadius:100,overflow:"hidden"}}><div style={{height:"100%",width:`${p}%`,background:color,borderRadius:100,transition:"width .4s"}}/></div>;
+}
+
+// ── DESIGN TOKENS ──────────────────────────────────────────────────────
+const C = {
+  s0:"#080808",s1:"#101010",s2:"#161616",s3:"#1E1E1E",s4:"#262626",s5:"#2E2E2E",
+  b0:"#181818",b1:"#222222",b2:"#2E2E2E",b3:"#3A3A3A",
+  t0:"#F0F0F0",t1:"#A0A0A0",t2:"#606060",t3:"#383838",
+  protein:"#FF6B47",fat:"#FFB830",carbs:"#36CF7A",cal:"#4D9EF8",
+  sodium:"#B39DFA",potassium:"#2DD4BF",water:"#38BDF8",fiber:"#86EFAC",
+  ok:"#22C55E",warn:"#F59E0B",danger:"#EF4444",
+};
+const F = { hd:"'Barlow Condensed',sans-serif", bd:"'DM Sans',sans-serif", mn:"'DM Mono',monospace" };
+
+// ── STYLES ─────────────────────────────────────────────────────────────
+function Styles(){
+  return <style>{`
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body,#root{height:100%;overflow:hidden;background:${C.s0}}
+body{font-family:${F.bd};color:${C.t0};-webkit-font-smoothing:antialiased}
+.shell{width:100%;max-width:430px;height:100vh;margin:0 auto;display:flex;flex-direction:column;background:${C.s0};overflow:hidden}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:80px}
+.screen::-webkit-scrollbar{display:none}
+.hdr{padding:16px 16px 0;background:${C.s0};position:sticky;top:0;z-index:10}
+.card{background:${C.s2};border:1px solid ${C.b1};border-radius:16px;padding:16px}
+.card-xs{background:${C.s3};border:1px solid ${C.b1};border-radius:10px;padding:10px}
+.btn-p{background:${C.t0};color:${C.s0};border:none;border-radius:14px;font-family:${F.bd};font-size:16px;font-weight:600;padding:16px;width:100%;cursor:pointer;transition:opacity .12s,transform .12s}
+.btn-p:active{opacity:.8;transform:scale(.98)}
+.btn-p:disabled{opacity:.3}
+.btn-g{background:transparent;color:${C.t0};border:1.5px solid ${C.b2};border-radius:14px;font-family:${F.bd};font-size:15px;font-weight:500;padding:14px;width:100%;cursor:pointer}
+.pill{display:inline-flex;align-items:center;gap:5px;background:${C.s3};border:1px solid ${C.b2};border-radius:100px;color:${C.t0};font-family:${F.bd};font-size:12px;font-weight:500;padding:7px 14px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .12s}
+.pill:active{opacity:.7}
+.pill.on{background:${C.t0};color:${C.s0};border-color:${C.t0}}
+.ib{width:30px;height:30px;border-radius:50%;background:${C.s3};border:1px solid ${C.b1};color:${C.t0};cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s}
+.ib:active{opacity:.7;transform:scale(.9)}
+.inp{background:${C.s3};border:1.5px solid ${C.b2};border-radius:10px;color:${C.t0};font-family:${F.mn};font-size:15px;padding:12px 14px;width:100%;outline:none;transition:border-color .15s}
+.inp:focus{border-color:${C.cal}}
+.inp::placeholder{color:${C.t3};font-family:${F.bd}}
+.il{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:${C.t2};margin-bottom:6px}
+.btr{height:3px;background:${C.s4};border-radius:100px;overflow:hidden}
+.btf{height:100%;border-radius:100px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+.btrl{height:5px;background:${C.s4};border-radius:100px;overflow:hidden}
+.tabs{display:flex;background:${C.s3};border:1px solid ${C.b1};border-radius:100px;padding:3px}
+.tab{flex:1;text-align:center;padding:8px;border-radius:100px;font-size:13px;font-weight:500;cursor:pointer;color:${C.t1};transition:all .15s}
+.tab.on{background:${C.t0};color:${C.s0}}
+.ni{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;padding:8px 4px 2px;background:none;border:none;color:${C.t2};transition:color .15s}
+.ni.on{color:${C.t0}}
+.ni span{font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.fab{width:54px;height:54px;border-radius:50%;background:${C.t0};color:${C.s0};border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(240,240,240,.14);transition:transform .15s}
+.fab:active{transform:scale(.9)}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:200;display:flex;flex-direction:column;justify-content:flex-end}
+.sh{background:${C.s1};border-radius:22px 22px 0 0;border-top:1px solid ${C.b1};max-height:94vh;overflow-y:auto;scrollbar-width:none}
+.sh::-webkit-scrollbar{display:none}
+.hdl{width:36px;height:4px;background:${C.s5};border-radius:100px;margin:12px auto}
+.row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid ${C.b0}}
+.row:last-child{border-bottom:none}
+.fr{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid ${C.b0}}
+.fr:last-child{border-bottom:none}
+.fi{width:42px;height:42px;border-radius:11px;background:${C.s3};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.hg{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.hc{aspect-ratio:1;border-radius:3px;background:${C.s4}}
+.hc.y{background:${C.ok}}
+.go{display:flex;align-items:flex-start;gap:14px;padding:16px;background:${C.s2};border:1.5px solid ${C.b2};border-radius:14px;cursor:pointer;transition:all .15s;margin-bottom:10px}
+.go.on{border-color:${C.t0};background:${C.s3}}
+.rad{width:22px;height:22px;border-radius:50%;border:2px solid ${C.t2};display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.rad.on{border-color:${C.t0};background:${C.t0}}
+.wg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.wc{display:flex;flex-direction:column;gap:3px}
+.ch{border-radius:7px;display:flex;align-items:center;justify-content:center;width:100%;padding:6px 2px;font-family:${F.mn};font-size:9px;font-weight:500}
+.sr{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.sr::-webkit-scrollbar{display:none}
+.sw{display:flex;align-items:center;gap:10px;background:${C.s2};border:1px solid ${C.b1};border-radius:100px;padding:11px 16px;cursor:pointer}
+.st{font-family:${F.hd};font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${C.t2};margin-bottom:10px;margin-top:20px}
+.pll{height:2px;background:${C.s4};border-radius:100px;overflow:hidden}
+.pf{height:100%;background:${C.t0};border-radius:100px;transition:width .3s}
+.ab{background:linear-gradient(135deg,#4D9EF8,#B39DFA);color:#fff;font-size:9px;font-weight:800;letter-spacing:1.2px;padding:3px 8px;border-radius:5px;text-transform:uppercase}
+.pt{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.35);color:${C.danger};font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 10px;border-radius:6px;display:inline-block}
+.cb{background:rgba(77,158,248,.12);border:1px solid rgba(77,158,248,.25);color:${C.cal};font-family:${F.mn};font-size:11px;font-weight:600;padding:4px 10px;border-radius:100px}
+.em{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 20px;gap:10px;text-align:center}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:100px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:${C.t0};cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+@keyframes fu{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.fu{animation:fu .25s ease forwards}
+@keyframes ti{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.toast{animation:ti .2s ease;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:${C.s3};border:1px solid ${C.b2};border-radius:100px;padding:10px 20px;font-size:13px;font-weight:500;z-index:500;white-space:nowrap;pointer-events:none}
+`}</style>;
+}
+
+// ── UTILITIES ──────────────────────────────────────────────────────────
+const td = () => new Date().toISOString().split("T")[0];
+const fmtD  = d => new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+const fmtDs = d => new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
+const dMinus = (s,n) => { const d=new Date(s+"T12:00:00"); d.setDate(d.getDate()-n); return d.toISOString().split("T")[0]; };
+const dPlus  = (s,n) => { const d=new Date(s+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().split("T")[0]; };
+const pastN  = (n,from=td()) => Array.from({length:n},(_,i)=>dMinus(from,n-1-i));
+const pct    = (v,t) => (!t||t<=0)?0:Math.min(Math.round(v/t*100),999);
+const clamp  = (v,mn,mx) => Math.min(Math.max(v,mn),mx);
+
+const sumDay = dl => {
+  if(!dl?.meals) return {cal:0,p:0,f:0,c:0,na:0,k:0,fb:0,w:0};
+  return Object.values(dl.meals).flat().reduce((a,e)=>({
+    cal:a.cal+(+e.cal||0), p:a.p+(+e.p||0), f:a.f+(+e.f||0), c:a.c+(+e.c||0),
+    na:a.na+(+e.na||0),    k:a.k+(+e.k||0), fb:a.fb+(+e.fb||0), w:a.w+(+e.w||0),
+  }),{cal:0,p:0,f:0,c:0,na:0,k:0,fb:0,w:0});
+};
+
+const wtTrend = wts => {
+  if(!wts.length) return {cur:null,avg:null,chg:null,data:[]};
+  const s=[...wts].sort((a,b)=>a.date.localeCompare(b.date));
+  const r=s.slice(-7), cur=r[r.length-1]?.w||null;
+  const avg=r.length?+(r.reduce((a,x)=>a+x.w,0)/r.length).toFixed(1):null;
+  const pv=s.slice(-14,-7);
+  const pa=pv.length?pv.reduce((a,x)=>a+x.w,0)/pv.length:null;
+  return {cur,avg,chg:(avg&&pa)?+(avg-pa).toFixed(1):null,data:r};
+};
+
+const MEALS=["Morning","Midday","Afternoon","Evening","Night"];
+const MICO={Morning:"🌅",Midday:"☀️",Afternoon:"🌤️",Evening:"🌙",Night:"⭐"};
+const GLABELS={cut:"Cut / Prep",maintain:"Maintenance",bulk:"Offseason Bulk",prep:"Peak Week"};
+
+// ── STATE ──────────────────────────────────────────────────────────────
+const INIT = {
+  screen:"onboarding", tab:"dashboard", modal:null, ob:{step:0},
+  profile:{name:"",initials:"",memberSince:null,units:"imperial",height:null},
+  strategy:{goal:null,programStyle:null,program:null,contestDate:null},
+  targets:{cal:null,p:null,f:null,c:null,na:null,k:null,w:null,fb:null},
+  logs:{},
+  metrics:{weights:[],bodyfat:[],measurements:[],hydration:[],photos:[],digestion:[],performance:[]},
+  ui:{logDate:td(),aRange:"7d",aSec:"weight"},
+};
+
+function reduce(st,a){
+  switch(a.t){
+    case "SCREEN":   return{...st,screen:a.v};
+    case "TAB":      return{...st,tab:a.v};
+    case "MODAL":    return{...st,modal:a.v};
+    case "OB_NEXT":  return{...st,ob:{...st.ob,step:st.ob.step+1}};
+    case "OB_BACK":  return{...st,ob:{...st.ob,step:Math.max(0,st.ob.step-1)}};
+    case "OB_DONE":  return{...st,screen:"main"};
+    case "PROFILE":  return{...st,profile:{...st.profile,...a.v}};
+    case "STRATEGY": return{...st,strategy:{...st.strategy,...a.v}};
+    case "TARGETS":  return{...st,targets:{...st.targets,...a.v}};
+    case "LOG_FOOD":{
+      const{date,meal,entry}=a;
+      const dl=st.logs[date]||{meals:{},note:""};
+      return{...st,logs:{...st.logs,[date]:{...dl,meals:{...dl.meals,[meal]:[...(dl.meals[meal]||[]),entry]}}}};
+    }
+    case "DEL_FOOD":{
+      const dl=st.logs[a.date]; if(!dl)return st;
+      return{...st,logs:{...st.logs,[a.date]:{...dl,meals:{...dl.meals,[a.meal]:(dl.meals[a.meal]||[]).filter((_,i)=>i!==a.idx)}}}};
+    }
+    case "LOG_NOTE":{
+      const dl=st.logs[a.date]||{meals:{},note:""};
+      return{...st,logs:{...st.logs,[a.date]:{...dl,note:a.note}}};
+    }
+    case "LOG_W":    return{...st,metrics:{...st.metrics,weights:[...st.metrics.weights,a.v]}};
+    case "LOG_BF":   return{...st,metrics:{...st.metrics,bodyfat:[...st.metrics.bodyfat,a.v]}};
+    case "LOG_MEAS": return{...st,metrics:{...st.metrics,measurements:[...st.metrics.measurements,a.v]}};
+    case "LOG_H":    return{...st,metrics:{...st.metrics,hydration:[...st.metrics.hydration,a.v]}};
+    case "LOG_DIG":  return{...st,metrics:{...st.metrics,digestion:[...st.metrics.digestion,a.v]}};
+    case "LOG_PERF": return{...st,metrics:{...st.metrics,performance:[...st.metrics.performance,a.v]}};
+    case "UI":       return{...st,ui:{...st.ui,...a.v}};
+    default: return st;
+  }
+}
+
+// ── SHARED COMPONENTS ─────────────────────────────────────────────────
+function Ring({size=136,stroke=9,val=0,max=1,color=C.cal,children}){
+  const r=(size-stroke)/2, circ=2*Math.PI*r;
+  const ratio=max>0?clamp(val/max,0,1):0;
+  const off=circ-ratio*circ;
+  const rc=ratio>1.05?C.danger:ratio>0.88?C.warn:color;
+  return(
+    <div style={{position:"relative",width:size,height:size,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <svg width={size} height={size} style={{position:"absolute",transform:"rotate(-90deg)"}}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.s4} strokeWidth={stroke}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={rc} strokeWidth={stroke}
+          strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round"
+          style={{transition:"stroke-dashoffset .6s cubic-bezier(.4,0,.2,1)"}}/>
+      </svg>
+      <div style={{position:"relative",textAlign:"center"}}>{children}</div>
+    </div>
+  );
+}
+
+function MBar({label,val,tgt,color,unit="g"}){
+  const p=pct(val,tgt);
+  return(
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+        <span style={{fontSize:11,color:C.t1,fontWeight:500}}>{label}</span>
+        <span style={{fontFamily:F.mn,fontSize:10,color:C.t2}}>{val}/{tgt||"—"}</span>
+      </div>
+      <div className="btr"><div className="btf" style={{width:`${clamp(p,0,100)}%`,background:color}}/></div>
+    </div>
+  );
+}
+
+function Empty({icon,title,sub,onAct,actLabel}){
+  return(
+    <div className="em">
+      <div style={{color:C.t2}}>{icon}</div>
+      <div style={{fontWeight:600,fontSize:15}}>{title}</div>
+      {sub&&<div style={{fontSize:13,color:C.t1,maxWidth:240}}>{sub}</div>}
+      {onAct&&<button className="pill on" style={{marginTop:6}} onClick={onAct}>{actLabel}</button>}
+    </div>
+  );
+}
+
+function useToast(){
+  const[msg,setMsg]=useState(null);
+  const show=useCallback(m=>{setMsg(m);setTimeout(()=>setMsg(null),2200);},[]);
+  return{msg,show};
+}
+
+// ── ONBOARDING ─────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function Onboarding({st,dp}){
+  const{step}=st.ob, TOTAL=5;
+  const[name,setName]=useState("");
+  const[bw,setBw]=useState("");
+  const[ht,setHt]=useState("");
+  const[goal,setGoal]=useState(null);
+  const[prog,setProg]=useState(null);
+  const[tgts,setTgts]=useState({cal:"",p:"",f:"",c:"",na:"",k:"",w:"",fb:""});
+
+  const ok=[name.trim().length>0,!!goal,!!prog,true,true][step];
+
+  function next(){
+    if(step===0){
+      dp({t:"PROFILE",v:{name:name.trim(),initials:name.trim().split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2),memberSince:new Date().toISOString(),height:ht?+ht:null}});
+      if(bw) dp({t:"LOG_W",v:{date:td(),w:+bw,time:"morning",notes:"Starting weight"}});
+    }
+    if(step===1) dp({t:"STRATEGY",v:{goal}});
+    if(step===2) dp({t:"STRATEGY",v:{programStyle:prog}});
+    if(step===3){
+      const out={};
+      Object.entries(tgts).forEach(([k,v])=>{ if(v!=="") out[k]=+v; });
+      if(Object.keys(out).length) dp({t:"TARGETS",v:out});
+    }
+    if(step<TOTAL-1) dp({t:"OB_NEXT"});
+    else dp({t:"OB_DONE"});
+  }
+
+  const SLIM=["YOUR PROFILE","YOUR GOAL","PROGRAM STYLE","SET TARGETS","LET'S GO"];
+
+  return(
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:C.s0}}>
+      <div style={{padding:"20px 20px 0"}}>
+        {step>0&&<button className="ib" style={{marginBottom:12}} onClick={()=>dp({t:"OB_BACK"})}><ChevronLeft size={16}/></button>}
+        <div className="pll"><div className="pf" style={{width:`${((step+1)/TOTAL)*100}%`}}/></div>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+          <span style={{fontSize:10,color:C.t2,letterSpacing:1,textTransform:"uppercase",fontWeight:600}}>{SLIM[step]}</span>
+          <span style={{fontSize:10,color:C.t3,fontFamily:F.mn}}>{step+1}/{TOTAL}</span>
+        </div>
+      </div>
+
+      <div className="screen" style={{padding:"24px 20px 20px"}}>
+
+        {step===0&&(
+          <div className="fu">
+            <div style={{fontFamily:F.hd,fontSize:44,fontWeight:900,lineHeight:.95,marginBottom:6}}>WHO<br/>ARE YOU?</div>
+            <p style={{fontSize:14,color:C.t1,marginBottom:28,lineHeight:1.6}}>This app tracks, analyzes, and organizes. You own every number — nothing is fabricated or assumed.</p>
+            <div style={{marginBottom:16}}>
+              <div className="il">Your name</div>
+              <input className="inp" placeholder="e.g. Kelan Shada" value={name} autoFocus onChange={e=>setName(e.target.value)}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+              <div><div className="il">Bodyweight (lbs)</div><input className="inp" type="number" placeholder="185" value={bw} onChange={e=>setBw(e.target.value)}/></div>
+              <div><div className="il">Height (in)</div><input className="inp" type="number" placeholder="72" value={ht} onChange={e=>setHt(e.target.value)}/></div>
+            </div>
+            <div style={{padding:14,background:C.s3,borderRadius:12,border:`1px solid ${C.b1}`}}>
+              <div style={{display:"flex",gap:10}}><Info size={13} color={C.t2} style={{flexShrink:0,marginTop:2}}/><p style={{fontSize:12,color:C.t1,lineHeight:1.6}}>Bodyweight logs your starting entry only. The app never fabricates macros, calories, timelines, or prep protocols. You control everything.</p></div>
+            </div>
+          </div>
+        )}
+
+        {step===1&&(
+          <div className="fu">
+            <div style={{fontFamily:F.hd,fontSize:44,fontWeight:900,lineHeight:.95,marginBottom:6}}>WHAT'S<br/>YOUR GOAL?</div>
+            <p style={{fontSize:14,color:C.t1,marginBottom:24,lineHeight:1.6}}>Sets your dashboard context only — no targets are auto-generated.</p>
+            {[
+              {id:"cut",icon:<TrendingDown size={18} color={C.protein}/>,label:"Cut / Contest Prep",desc:"Systematic deficit toward stage conditioning. You set all targets."},
+              {id:"maintain",icon:<Activity size={18} color={C.carbs}/>,label:"Maintenance",desc:"Hold weight, optimize body composition."},
+              {id:"bulk",icon:<TrendingUp size={18} color={C.fat}/>,label:"Offseason / Bulk",desc:"Strategic caloric surplus for muscle growth."},
+              {id:"prep",icon:<Star size={18} color={C.sodium}/>,label:"Peak Week / Show Prep",desc:"Final competition prep phase. Requires contest date."},
+            ].map(g=>(
+              <div key={g.id} className={`go ${goal===g.id?"on":""}`} onClick={()=>setGoal(g.id)}>
+                <div style={{width:40,height:40,borderRadius:10,background:C.s4,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{g.icon}</div>
+                <div style={{flex:1}}><div style={{fontWeight:600,fontSize:15}}>{g.label}</div><div style={{fontSize:12,color:C.t1,marginTop:2,lineHeight:1.4}}>{g.desc}</div></div>
+                <div className={`rad ${goal===g.id?"on":""}`}>{goal===g.id&&<div style={{width:8,height:8,borderRadius:"50%",background:C.s0}}/>}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {step===2&&(
+          <div className="fu">
+            <div style={{fontFamily:F.hd,fontSize:44,fontWeight:900,lineHeight:.95,marginBottom:6}}>HOW DO<br/>YOU RUN?</div>
+            <p style={{fontSize:14,color:C.t1,marginBottom:24,lineHeight:1.6}}>Choose how much you want AI vs. manual control.</p>
+            {[
+              {id:"coached",icon:<Brain size={18} color={C.cal}/>,label:"AI Coached",desc:"AI adjusts your weekly calorie budget based on weight trend + goal. You always set macros."},
+              {id:"collaborative",icon:<Zap size={18} color={C.fat}/>,label:"Collaborative",desc:"You set macro targets. AI surfaces insights, tracks trends, and analyzes data only."},
+              {id:"manual",icon:<Edit2 size={18} color={C.carbs}/>,label:"Full Manual",desc:"100% your hands. App is a precision tracker — zero AI suggestions."},
+            ].map(p=>(
+              <div key={p.id} className={`go ${prog===p.id?"on":""}`} onClick={()=>setProg(p.id)}>
+                <div style={{width:40,height:40,borderRadius:10,background:C.s4,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{p.icon}</div>
+                <div style={{flex:1}}><div style={{fontWeight:600,fontSize:15}}>{p.label}</div><div style={{fontSize:12,color:C.t1,marginTop:2,lineHeight:1.4}}>{p.desc}</div></div>
+                <div className={`rad ${prog===p.id?"on":""}`}>{prog===p.id&&<div style={{width:8,height:8,borderRadius:"50%",background:C.s0}}/>}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {step===3&&(
+          <div className="fu">
+            <div style={{fontFamily:F.hd,fontSize:44,fontWeight:900,lineHeight:.95,marginBottom:6}}>YOUR<br/>TARGETS</div>
+            <p style={{fontSize:14,color:C.t1,marginBottom:8,lineHeight:1.6}}>Optional — set now or any time in Strategy.</p>
+            <div style={{padding:"10px 14px",background:`${C.cal}12`,borderRadius:10,border:`1px solid ${C.cal}30`,marginBottom:20}}>
+              <p style={{fontSize:12,color:C.cal,lineHeight:1.6}}>The app never generates numbers without your explicit input. These are your targets, set by you.</p>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {[{k:"cal",l:"Calories",u:"kcal",c:C.cal},{k:"p",l:"Protein",u:"g",c:C.protein},{k:"f",l:"Fat",u:"g",c:C.fat},{k:"c",l:"Carbs",u:"g",c:C.carbs},{k:"na",l:"Sodium",u:"mg",c:C.sodium},{k:"k",l:"Potassium",u:"mg",c:C.potassium},{k:"w",l:"Water",u:"L",c:C.water},{k:"fb",l:"Fiber",u:"g",c:C.fiber}].map(({k,l,u,c})=>(
+                <div key={k}>
+                  <div className="il" style={{color:c}}>{l} ({u})</div>
+                  <input className="inp" type="number" placeholder="—" style={{fontSize:15,padding:"10px 12px"}} value={tgts[k]} onChange={e=>setTgts(t=>({...t,[k]:e.target.value}))}/>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step===4&&(
+          <div className="fu" style={{textAlign:"center"}}>
+            <div style={{fontSize:72,margin:"20px 0 16px"}}>🏋️</div>
+            <div style={{fontFamily:F.hd,fontSize:36,fontWeight:900,marginBottom:10,lineHeight:1}}>READY TO TRACK</div>
+            <p style={{fontSize:14,color:C.t1,lineHeight:1.7,marginBottom:28}}>No fake data. No assumed protocols. Every data point is yours — entered by you.</p>
+            <div style={{display:"flex",flexDirection:"column",gap:8,textAlign:"left"}}>
+              {[["🔥","Macro & Calorie Tracking"],["🤖","AI Food Photo + Description Analysis"],["📈","Weight Trend & Body Metric Analytics"],["💧","Sodium, Potassium & Hydration Logs"],["📊","Prep Analytics & Progress Charts"],["📸","Progress Photo Timeline"],["🫀","Digestion & Recovery Scoring"],["💪","Gym Performance Logging"]].map(([ic,lb])=>(
+                <div key={lb} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:C.s2,borderRadius:10,border:`1px solid ${C.b1}`}}>
+                  <span style={{fontSize:17}}>{ic}</span>
+                  <span style={{fontSize:14,fontWeight:500}}>{lb}</span>
+                  <CheckCircle size={13} color={C.ok} style={{marginLeft:"auto"}}/>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{padding:"12px 20px 28px",background:C.s0}}>
+        <button className="btn-p" onClick={next} disabled={!ok}>{step===TOTAL-1?"Launch IronIQ":"Continue"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ── DASHBOARD ──────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function Dashboard({st,dp}){
+  const[panel,setPanel]=useState(0);
+  const today=td(), dl=st.logs[today], tot=sumDay(dl);
+  const{targets:tg,metrics:mx}=st;
+  const trend=useMemo(()=>wtTrend(mx.weights),[mx.weights]);
+  const L7=useMemo(()=>pastN(7),[]);
+  const eBal=useMemo(()=>L7.map(d=>{const t=sumDay(st.logs[d]);return{date:d.slice(5),cal:t.cal,tgt:tg.cal||0};}),[st.logs,tg.cal,L7]);
+  const wH=mx.hydration.filter(h=>h.date===today).reduce((s,h)=>s+h.liters,0);
+  const lastDig=mx.digestion.slice(-1)[0];
+  const dateStr=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}).toUpperCase();
+
+  return(
+    <div className="screen">
+      <div className="hdr" style={{paddingBottom:12}}>
+        <div style={{fontSize:11,color:C.t2,fontWeight:500,letterSpacing:1}}>{dateStr}</div>
+        <div style={{fontFamily:F.hd,fontSize:44,fontWeight:900,lineHeight:.95}}>DASHBOARD</div>
+      </div>
+
+      {/* ─ HERO CAROUSEL ─ */}
+      <div style={{padding:"0 16px 4px"}}>
+        <div className="card" style={{padding:0,overflow:"hidden"}}>
+          <div style={{display:"flex",justifyContent:"flex-end",padding:"10px 14px 0",gap:5}}>
+            {[0,1,2].map(i=><div key={i} onClick={()=>setPanel(i)} style={{width:i===panel?16:5,height:5,borderRadius:100,background:i===panel?C.t0:C.s5,cursor:"pointer",transition:"all .2s"}}/>)}
+          </div>
+
+          {panel===0&&(
+            <div style={{padding:"10px 20px 20px"}} className="fu">
+              <div style={{fontSize:12,fontWeight:600,color:C.t1,marginBottom:14}}>Daily Nutrition</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:11,color:C.t2}}>Remaining</div>
+                  <div style={{fontFamily:F.mn,fontSize:28}}>{tg.cal?Math.max(0,tg.cal-tot.cal):"—"}</div>
+                  <div style={{fontSize:10,color:C.t2}}>kcal</div>
+                </div>
+                <Ring size={130} stroke={9} val={tot.cal} max={tg.cal||1} color={C.cal}>
+                  <div style={{fontFamily:F.mn,fontSize:28,color:C.t0}}>{tot.cal}</div>
+                  <div style={{fontSize:9,color:C.t2,letterSpacing:1}}>KCAL</div>
+                </Ring>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:11,color:C.t2}}>Target</div>
+                  <div style={{fontFamily:F.mn,fontSize:28}}>{tg.cal||"—"}</div>
+                  <div style={{fontSize:10,color:C.t2}}>kcal</div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:16,marginTop:20}}>
+                <MBar label="Protein" val={tot.p} tgt={tg.p} color={C.protein}/>
+                <MBar label="Fat"     val={tot.f} tgt={tg.f} color={C.fat}/>
+                <MBar label="Carbs"   val={tot.c} tgt={tg.c} color={C.carbs}/>
+              </div>
+              <div style={{marginTop:14}}>
+                <div className="tabs">
+                  <div className="tab on">Consumed</div>
+                  <div className="tab">Remaining</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {panel===1&&(
+            <div style={{padding:"10px 16px 20px"}} className="fu">
+              <div style={{fontSize:12,fontWeight:600,color:C.t1,marginBottom:14}}>Weekly Nutrition</div>
+              <div className="wg">
+                {L7.map(d=>{
+                  const t=sumDay(st.logs[d]);
+                  const isT=d===td();
+                  const dl=["S","M","T","W","T","F","S"][new Date(d+"T12:00:00").getDay()];
+                  return(
+                    <div key={d} className="wc">
+                      <div className="ch" style={{background:`${C.cal}20`,color:C.cal}}><span style={{fontSize:8}}>{t.cal||"—"}</span></div>
+                      <div className="ch" style={{background:`${C.protein}20`,color:C.protein}}><span style={{fontSize:8}}>{t.p?`${t.p}P`:"—"}</span></div>
+                      <div className="ch" style={{background:`${C.fat}20`,color:C.fat}}><span style={{fontSize:8}}>{t.f?`${t.f}F`:"—"}</span></div>
+                      <div className="ch" style={{background:`${C.carbs}20`,color:C.carbs,minHeight:42}}><span style={{fontSize:8}}>{t.c?`${t.c}C`:"—"}</span></div>
+                      <div style={{textAlign:"center",width:20,height:20,borderRadius:"50%",margin:"4px auto 0",background:isT?C.t0:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <span style={{fontSize:9,fontWeight:700,color:isT?C.s0:C.t2}}>{dl}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {panel===2&&(
+            <div style={{padding:"10px 20px 20px"}} className="fu">
+              <div style={{fontSize:12,fontWeight:600,color:C.t1,marginBottom:8}}>Energy Balance — Last 7 Days</div>
+              <SVGBarChart data={eBal} dataKey="cal" height={120}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:12}}>
+                {[{l:"7d Avg",v:eBal.filter(d=>d.cal>0).length?Math.round(eBal.reduce((s,d)=>s+d.cal,0)/Math.max(eBal.filter(d=>d.cal>0).length,1)):"—",c:C.cal},{l:"Target",v:tg.cal||"—",c:C.t1},{l:"Δ Avg",v:(tg.cal&&eBal.filter(d=>d.cal>0).length)?Math.round(eBal.reduce((s,d)=>s+d.cal,0)/Math.max(eBal.filter(d=>d.cal>0).length,1)-tg.cal):"—",c:C.t2}].map(({l,v,c})=>(
+                  <div key={l} style={{textAlign:"center",padding:"8px 4px",background:C.s3,borderRadius:10}}>
+                    <div style={{fontFamily:F.mn,fontSize:16,color:c}}>{v}</div>
+                    <div style={{fontSize:9,color:C.t2,marginTop:2}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ─ INSIGHT GRID ─ */}
+      <div style={{padding:"0 16px"}}>
+        <div className="st">Insights & Analytics</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+
+          <div className="card" onClick={()=>dp({t:"TAB",v:"analytics"})} style={{cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <div><div style={{fontSize:12,fontWeight:600}}>Weight Trend</div><div style={{fontSize:10,color:C.t2}}>Last 7d</div></div>
+              <Scale size={13} color={C.t2}/>
+            </div>
+            {trend.data.length>1?(
+              <>
+                <SVGLineChart data={trend.data.map(w=>({w:w.w} dataKey="w" color={C.sodium} height={46}/>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:5}}>
+                  <div style={{fontFamily:F.mn,fontSize:20}}>{trend.cur}<span style={{fontSize:11,color:C.t2}}> lbs</span></div>
+                  {trend.chg!==null&&<span style={{fontSize:11,fontWeight:600,color:trend.chg<0?C.ok:trend.chg>0?C.protein:C.t2}}>{trend.chg>0?"+":""}{trend.chg}</span>}
+                </div>
+              </>
+            ):(
+              <div style={{padding:"14px 0",textAlign:"center"}}>
+                <button className="pill" style={{fontSize:10}} onClick={e=>{e.stopPropagation();dp({t:"MODAL",v:"addW"})}}>
+                  <Plus size={10}/> Log weight
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Electrolytes</div>
+            <div style={{fontSize:10,color:C.t2,marginBottom:12}}>Today</div>
+            {[{l:"Na⁺",v:tot.na,t:tg.na,c:C.sodium,u:"mg"},{l:"K⁺",v:tot.k,t:tg.k,c:C.potassium,u:"mg"}].map(({l,v,t,c,u})=>(
+              <div key={l} style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:11,color:c,fontWeight:600}}>{l}</span>
+                  <span style={{fontFamily:F.mn,fontSize:9,color:C.t2}}>{v}/{t||"—"}{u}</span>
+                </div>
+                <div className="btr"><div className="btf" style={{width:`${clamp(pct(v,t),0,100)}%`,background:c}}/></div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card" onClick={()=>dp({t:"MODAL",v:"addH"})} style={{cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <div><div style={{fontSize:12,fontWeight:600}}>Hydration</div><div style={{fontSize:10,color:C.t2}}>Today</div></div>
+              <Droplets size={13} color={C.water}/>
+            </div>
+            <div style={{fontFamily:F.mn,fontSize:26,color:C.water}}>{wH.toFixed(1)}<span style={{fontSize:12,color:C.t2}}> / {tg.w||"—"}L</span></div>
+            <div className="btr" style={{marginTop:8}}><div className="btf" style={{width:`${clamp(pct(wH,tg.w),0,100)}%`,background:C.water}}/></div>
+            <div style={{fontSize:11,color:C.cal,marginTop:8}}>+ Tap to log</div>
+          </div>
+
+          <div className="card" onClick={()=>dp({t:"MODAL",v:"addDig"})} style={{cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <div><div style={{fontSize:12,fontWeight:600}}>Recovery</div><div style={{fontSize:10,color:C.t2}}>Last Entry</div></div>
+              <Activity size={13} color={C.t2}/>
+            </div>
+            {lastDig?(
+              <>
+                <div style={{fontSize:26,marginBottom:2}}>{["","🤢","😕","😐","😊","💪"][lastDig.score]}</div>
+                <div style={{fontFamily:F.mn,fontSize:20,color:[C.danger,C.danger,C.warn,C.warn,C.ok,C.ok][lastDig.score]}}>{lastDig.score}/5</div>
+                {lastDig.notes&&<div style={{fontSize:10,color:C.t2,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lastDig.notes}</div>}
+              </>
+            ):<div style={{fontSize:11,color:C.cal,marginTop:10}}>+ Log today</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* ─ HABITS ─ */}
+      <div style={{padding:"0 16px"}}>
+        <div className="st">Habits — Last 30 Days</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {[
+            {label:"Weigh-In", fn:d=>mx.weights.some(w=>w.date===d), color:C.sodium},
+            {label:"Food Log", fn:d=>!!(st.logs[d]&&Object.values(st.logs[d].meals||{}).some(m=>m.length>0)), color:C.cal},
+          ].map(({label,fn,color})=>{
+            const L30=pastN(30);
+            const streak=(()=>{let s=0;for(let i=L30.length-1;i>=0;i--){if(fn(L30[i]))s++;else break;}return s;})();
+            const wk=L30.slice(-7).filter(fn).length;
+            return(
+              <div key={label} className="card">
+                <div style={{fontWeight:600,fontSize:13,marginBottom:2}}>{label}</div>
+                <div style={{fontSize:10,color:C.t2,marginBottom:8}}>30-day log</div>
+                <div className="hg">{L30.map((d,i)=><div key={i} className={`hc ${fn(d)?"y":""}`} style={fn(d)?{background:color}:{}}/>)}</div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+                  <span style={{fontFamily:F.mn,fontSize:12,color:C.t1}}>{wk}/7<span style={{color:C.t2}}> wk</span></span>
+                  {streak>0&&<span style={{fontSize:10,color}}>🔥 {streak}d</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─ BODY METRICS ─ */}
+      <div style={{padding:"0 16px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div className="st" style={{margin:0,marginTop:20}}>Body Metrics</div>
+          <button onClick={()=>dp({t:"TAB",v:"analytics"})} style={{background:"none",border:"none",color:C.cal,fontSize:12,cursor:"pointer",fontWeight:500}}>See All →</button>
+        </div>
+        <div style={{marginTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+          <div className="card" onClick={()=>dp({t:"MODAL",v:"addW"})} style={{cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><div style={{fontSize:12,fontWeight:600}}>Scale Weight</div><Scale size={13} color={C.t2}/></div>
+            <div style={{fontFamily:F.mn,fontSize:26}}>{mx.weights.length?mx.weights[mx.weights.length-1].w:"—"}<span style={{fontSize:12,color:C.t2}}> lbs</span></div>
+            <div style={{fontSize:11,color:C.cal,marginTop:6}}>+ Log weight</div>
+          </div>
+          <div className="card" onClick={()=>dp({t:"MODAL",v:"addBF"})} style={{cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><div style={{fontSize:12,fontWeight:600}}>Body Fat %</div><Target size={13} color={C.t2}/></div>
+            <div style={{fontFamily:F.mn,fontSize:26}}>{mx.bodyfat.length?mx.bodyfat[mx.bodyfat.length-1].v:"—"}<span style={{fontSize:12,color:C.t2}}>%</span></div>
+            <div style={{fontSize:11,color:C.cal,marginTop:6}}>+ Log BF%</div>
+          </div>
+        </div>
+      </div>
+
+      {st.strategy.contestDate&&(
+        <div style={{padding:"0 16px",marginBottom:16}}>
+          <div className="card" style={{borderColor:"rgba(239,68,68,.25)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <span className="pt">Contest Prep</span>
+                <div style={{fontFamily:F.mn,fontSize:36,marginTop:6}}>{Math.ceil((new Date(st.strategy.contestDate)-new Date())/(1000*60*60*24*7))}<span style={{fontFamily:F.bd,fontSize:14,color:C.t1,fontWeight:400}}> weeks out</span></div>
+                <div style={{fontSize:11,color:C.t2}}>{st.strategy.contestDate}</div>
+              </div>
+              <Calendar size={28} color="rgba(239,68,68,.35)"/>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── FOOD LOG ───────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function FoodLog({st,dp}){
+  const{ui,logs,targets:tg}=st;
+  const dateStr=ui.logDate, dl=logs[dateStr], tot=sumDay(dl), isToday=dateStr===td();
+
+  function chDate(delta){
+    const n=delta>0?dPlus(dateStr,1):dMinus(dateStr,1);
+    if(n>td())return;
+    dp({t:"UI",v:{logDate:n}});
+  }
+
+  const dispDate=isToday?"Today":fmtD(dateStr);
+
+  return(
+    <div className="screen">
+      <div className="hdr" style={{paddingBottom:0}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingBottom:8}}>
+          <button className="ib" style={{width:28,height:28}}>
+            <div style={{display:"flex",flexDirection:"column",gap:2}}>{[18,14,18].map((w,i)=><div key={i} style={{width:w,height:2,background:C.t0,borderRadius:2}}/>)}</div>
+          </button>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button className="ib" style={{width:28,height:28}} onClick={()=>chDate(-1)}><ChevronLeft size={15}/></button>
+            <span style={{fontSize:15,fontWeight:600,minWidth:60,textAlign:"center"}}>{dispDate}</span>
+            <button className="ib" style={{width:28,height:28,opacity:isToday?.35:1}} onClick={()=>chDate(1)} disabled={isToday}><ChevronRight size={15}/></button>
+          </div>
+          <div style={{width:28}}/>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,padding:"6px 0"}}>
+          {[{l:"🔥",v:tot.cal,t:tg.cal,c:C.cal},{l:"P",v:tot.p,t:tg.p,c:C.protein},{l:"F",v:tot.f,t:tg.f,c:C.fat},{l:"C",v:tot.c,t:tg.c,c:C.carbs}].map(({l,v,t,c})=>(
+            <div key={l}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                <span style={{fontFamily:F.mn,fontSize:9,color:c}}>{l}</span>
+                <span style={{fontFamily:F.mn,fontSize:9,color:C.t2}}>{v}/{t||"—"}</span>
+              </div>
+              <div className="btr"><div className="btf" style={{width:`${clamp(pct(v,t),0,100)}%`,background:c}}/></div>
+            </div>
+          ))}
+        </div>
+
+        <div className="sr" style={{padding:"6px 0 10px"}}>
+          {pastN(7).map(d=>{
+            const has=!!(logs[d]&&Object.values(logs[d].meals||{}).some(m=>m.length>0));
+            const dt=new Date(d+"T12:00:00"), sel=d===dateStr;
+            return(
+              <div key={d} onClick={()=>dp({t:"UI",v:{logDate:d}})}
+                style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"5px 10px",borderRadius:100,cursor:"pointer",flexShrink:0,background:sel?C.t0:"transparent",border:`1.5px solid ${sel?C.t0:C.b2}`,transition:"all .15s"}}>
+                <span style={{fontSize:9,fontWeight:600,color:sel?C.s0:C.t2}}>{["S","M","T","W","T","F","S"][dt.getDay()]}</span>
+                <span style={{fontSize:14,fontWeight:700,color:sel?C.s0:C.t0}}>{dt.getDate()}</span>
+                {has&&<div style={{width:4,height:4,borderRadius:"50%",background:sel?C.s0:C.cal,marginTop:2}}/>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{padding:"0 16px"}}>
+        {MEALS.map(meal=>{
+          const entries=dl?.meals?.[meal]||[];
+          const mt=entries.reduce((a,e)=>({cal:a.cal+(+e.cal||0),p:a.p+(+e.p||0),f:a.f+(+e.f||0),c:a.c+(+e.c||0)}),{cal:0,p:0,f:0,c:0});
+          return(
+            <div key={meal} style={{marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:30,height:30,borderRadius:"50%",background:C.s3,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{MICO[meal]}</div>
+                  <span style={{fontSize:13,fontWeight:600}}>{meal}</span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  {entries.length>0&&(
+                    <div style={{display:"flex",gap:5}}>
+                      {[[mt.cal,C.cal,"🔥"],[mt.p,C.protein,"P"],[mt.f,C.fat,"F"],[mt.c,C.carbs,"C"]].map(([v,color,l])=>(
+                        <span key={l} style={{fontFamily:F.mn,fontSize:10,color}}>{v}{l}</span>
+                      ))}
+                    </div>
+                  )}
+                  <button className="ib" style={{width:26,height:26}} onClick={()=>dp({t:"MODAL",v:{type:"addFood",meal,date:dateStr}})}><Plus size={12}/></button>
+                </div>
+              </div>
+
+              {entries.length>0?(
+                <div className="card" style={{padding:"4px 12px"}}>
+                  {entries.map((e,idx)=>(
+                    <div key={idx} className="fr">
+                      <div className="fi">{e.emoji||"🍽️"}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.name}</div>
+                        <div style={{fontFamily:F.mn,fontSize:10,color:C.t2,marginTop:2}}>
+                          <span style={{color:C.cal}}>{e.cal}🔥</span>
+                          <span style={{color:C.protein}}> {e.p}P</span>
+                          <span style={{color:C.fat}}> {e.f}F</span>
+                          <span style={{color:C.carbs}}> {e.c}C</span>
+                          {(+e.na||0)>0&&<span style={{color:C.sodium}}> {e.na}mgNa</span>}
+                          {e.amount&&<span style={{color:C.t3}}> · {e.amount}</span>}
+                        </div>
+                      </div>
+                      <button onClick={()=>dp({t:"DEL_FOOD",date:dateStr,meal,idx})} style={{background:"none",border:"none",color:C.t2,cursor:"pointer",padding:4}}><X size={14}/></button>
+                    </div>
+                  ))}
+                </div>
+              ):(
+                <div onClick={()=>dp({t:"MODAL",v:{type:"addFood",meal,date:dateStr}})} style={{padding:"10px 14px",background:C.s2,borderRadius:10,border:`1px dashed ${C.b2}`,color:C.t2,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+                  <Plus size={12}/> Add food to {meal}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Micros summary */}
+        {Object.values(dl?.meals||{}).some(m=>m.length>0)&&(
+          <div className="card" style={{marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:12}}>Day Totals — Micros</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {[{l:"Fiber",v:tot.fb,t:tg.fb,c:C.fiber,u:"g"},{l:"Sodium",v:tot.na,t:tg.na,c:C.sodium,u:"mg"},{l:"Potassium",v:tot.k,t:tg.k,c:C.potassium,u:"mg"},{l:"Water",v:tot.w,t:tg.w,c:C.water,u:"L"}].map(({l,v,t,c,u})=>(
+                <div key={l} className="card-xs">
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                    <span style={{fontSize:11,color:c,fontWeight:600}}>{l}</span>
+                    <span style={{fontFamily:F.mn,fontSize:10,color:C.t2}}>{v}{u}</span>
+                  </div>
+                  <div className="btr"><div className="btf" style={{width:`${clamp(pct(v,t),0,100)}%`,background:c}}/></div>
+                  {t&&<div style={{fontSize:9,color:C.t3,marginTop:3}}>of {t}{u}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Day Note</div>
+          <textarea className="inp" rows={2} placeholder="Optional: digestion notes, carb observations, meal timing..." style={{resize:"none",fontFamily:F.bd,lineHeight:1.5}}
+            value={dl?.note||""} onChange={e=>dp({t:"LOG_NOTE",date:dateStr,note:e.target.value})}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── STRATEGY ───────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function Strategy({st,dp}){
+  const{strategy:sg,targets:tg}=st;
+  const{program:prog,goal,contestDate}=sg;
+
+  return(
+    <div className="screen">
+      <div className="hdr" style={{paddingBottom:12}}>
+        <div style={{fontFamily:F.hd,fontSize:44,fontWeight:900,lineHeight:.95}}>STRATEGY</div>
+        <div className="sr" style={{marginTop:10}}>
+          {[{l:"+ New Goal",a:()=>dp({t:"MODAL",v:"newGoal"})},{l:"Edit Goal",a:()=>dp({t:"MODAL",v:"newGoal"})},{l:"New Program",a:()=>dp({t:"MODAL",v:"newProg"})},{l:"Edit Targets",a:()=>dp({t:"MODAL",v:"editTgts"})},{l:"Contest Date",a:()=>dp({t:"MODAL",v:"contestDate"})}].map(({l,a})=>(
+            <button key={l} className="pill" style={{fontSize:11}} onClick={a}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{padding:"0 16px"}}>
+        <div className="st">In Progress</div>
+        {prog?(
+          <div className="card" style={{marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+              <div><div style={{fontWeight:700,fontSize:15}}>{prog.name}</div><div style={{fontSize:11,color:C.t2}}>{prog.startDate} — Now</div></div>
+              <span className="cb">{prog.cal} kcal</span>
+            </div>
+            <div className="wg">
+              {["M","T","W","T","F","S","S"].map((d,i)=>{
+                const dd=prog.days?.[i]||{cal:prog.cal,p:prog.p||0,f:prog.f||0,c:prog.c||0};
+                return(
+                  <div key={i} className="wc">
+                    <div className="ch" style={{background:`${C.cal}22`,color:C.cal}}><span style={{fontSize:8}}>{dd.cal||"—"}</span></div>
+                    <div className="ch" style={{background:`${C.protein}22`,color:C.protein}}><span style={{fontSize:8}}>{dd.p?`${dd.p}P`:"—"}</span></div>
+                    <div className="ch" style={{background:`${C.fat}22`,color:C.fat}}><span style={{fontSize:8}}>{dd.f?`${dd.f}F`:"—"}</span></div>
+                    <div className="ch" style={{background:`${C.carbs}22`,color:C.carbs,minHeight:42}}><span style={{fontSize:8}}>{dd.c?`${dd.c}C`:"—"}</span></div>
+                    <div style={{textAlign:"center",marginTop:4}}><span style={{fontSize:8,color:C.t2}}>{d}</span></div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button className="pill" style={{fontSize:11}} onClick={()=>dp({t:"MODAL",v:"newProg"})}><RefreshCw size={11}/> New Program</button>
+              <button className="pill" style={{fontSize:11}} onClick={()=>dp({t:"MODAL",v:"editTgts"})}><Sliders size={11}/> Edit Targets</button>
+            </div>
+          </div>
+        ):(
+          <div className="card" style={{marginBottom:14}}>
+            <div className="em" style={{padding:"20px 0"}}>
+              <Layers size={28} color={C.t2}/>
+              <div style={{fontWeight:600}}>No Active Program</div>
+              <div style={{fontSize:12,color:C.t1}}>Create a weekly macro program</div>
+              <button className="pill on" style={{marginTop:6}} onClick={()=>dp({t:"MODAL",v:"newProg"})}>Create Program</button>
+            </div>
+          </div>
+        )}
+
+        <div className="st">Current Goal</div>
+        {goal?(
+          <div className="card" style={{marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:15}}>{GLABELS[goal]}</div>
+              {sg.programStyle&&<span className="pill" style={{fontSize:10,padding:"3px 10px"}}>{sg.programStyle}</span>}
+            </div>
+            {tg.cal&&(
+              <>
+                <div style={{fontFamily:F.mn,fontSize:34}}>{tg.cal}<span style={{fontFamily:F.bd,fontSize:13,color:C.t1}}> kcal/day</span></div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginTop:12}}>
+                  {[{l:"Protein",v:tg.p,c:C.protein,u:"g"},{l:"Fat",v:tg.f,c:C.fat,u:"g"},{l:"Carbs",v:tg.c,c:C.carbs,u:"g"}].map(({l,v,c,u})=>(
+                    <div key={l} style={{textAlign:"center",padding:"10px 6px",background:`${c}18`,borderRadius:10,border:`1px solid ${c}28`}}>
+                      <div style={{fontFamily:F.mn,fontSize:20,color:c}}>{v||"—"}</div>
+                      <div style={{fontSize:9,color:C.t2}}>{l} {u}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {(tg.na||tg.k)&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+                {tg.na&&<div style={{padding:"8px 12px",background:`${C.sodium}18`,borderRadius:10,border:`1px solid ${C.sodium}28`}}><div style={{fontSize:9,color:C.t2}}>Sodium</div><div style={{fontFamily:F.mn,fontSize:16,color:C.sodium}}>{tg.na}<span style={{fontSize:9,color:C.t2}}>mg</span></div></div>}
+                {tg.k&&<div style={{padding:"8px 12px",background:`${C.potassium}18`,borderRadius:10,border:`1px solid ${C.potassium}28`}}><div style={{fontSize:9,color:C.t2}}>Potassium</div><div style={{fontFamily:F.mn,fontSize:16,color:C.potassium}}>{tg.k}<span style={{fontSize:9,color:C.t2}}>mg</span></div></div>}
+              </div>
+            )}
+            <button className="pill" style={{marginTop:12,fontSize:11}} onClick={()=>dp({t:"MODAL",v:"editTgts"})}><Sliders size={11}/> Edit All Targets</button>
+          </div>
+        ):(
+          <div className="card" style={{marginBottom:14}}>
+            <div className="em" style={{padding:"20px 0"}}>
+              <Target size={28} color={C.t2}/>
+              <div style={{fontWeight:600}}>No Goal Set</div>
+              <button className="pill on" style={{marginTop:6}} onClick={()=>dp({t:"MODAL",v:"newGoal"})}>Set Goal</button>
+            </div>
+          </div>
+        )}
+
+        {contestDate&&(
+          <div style={{marginBottom:14}}>
+            <div className="st" style={{marginTop:0}}>Contest Countdown</div>
+            <div className="card" style={{borderColor:"rgba(239,68,68,.25)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <span className="pt">Active Prep</span>
+                  <div style={{fontFamily:F.mn,fontSize:40,marginTop:8}}>{Math.ceil((new Date(contestDate)-new Date())/(1000*60*60*24*7))}<span style={{fontFamily:F.bd,fontSize:14,color:C.t1,fontWeight:400}}> weeks out</span></div>
+                  <div style={{fontSize:11,color:C.t2}}>{contestDate}</div>
+                </div>
+                <Calendar size={32} color="rgba(239,68,68,.35)"/>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── ANALYTICS ──────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function Analytics({st,dp}){
+  const{ui,metrics:mx,logs,targets:tg}=st;
+  const{aRange:range,aSec:sec}=ui;
+  const setRange=v=>dp({t:"UI",v:{aRange:v}});
+  const setSec=v=>dp({t:"UI",v:{aSec:v}});
+
+  const nDays=range==="7d"?7:range==="30d"?30:90;
+  const days=useMemo(()=>pastN(nDays),[nDays]);
+
+  const wData=useMemo(()=>{
+    const wm={};mx.weights.forEach(w=>wm[w.date]=w.w);
+    return days.map(d=>({date:d.slice(5),w:wm[d]||null})).filter(d=>d.w);
+  },[mx.weights,days]);
+
+  const nData=useMemo(()=>days.map(d=>{const t=sumDay(logs[d]);return{date:d.slice(5),...t,tgt:tg.cal||0};}),[logs,days,tg.cal]);
+
+  const wData2=useMemo(()=>days.map(d=>({date:d.slice(5),L:mx.hydration.filter(h=>h.date===d).reduce((s,h)=>s+h.liters,0)})),[mx.hydration,days]);
+
+  const dData=useMemo(()=>{const dm={};mx.digestion.forEach(d=>dm[d.date]=d.score);return days.map(d=>({date:d.slice(5),s:dm[d]||null})).filter(d=>d.s);},[mx.digestion,days]);
+
+  const SECS=[{id:"weight",l:"Weight"},{id:"nutrition",l:"Nutrition"},{id:"electrolytes",l:"Electrolytes"},{id:"recovery",l:"Recovery"},{id:"photos",l:"Photos"}];
+
+  return(
+    <div className="screen">
+      <div className="hdr" style={{paddingBottom:8}}>
+        <div style={{fontFamily:F.hd,fontSize:44,fontWeight:900,lineHeight:.95}}>ANALYTICS</div>
+        <div className="sr" style={{marginTop:10}}>
+          {SECS.map(s=><button key={s.id} className={`pill ${sec===s.id?"on":""}`} style={{fontSize:11}} onClick={()=>setSec(s.id)}>{s.l}</button>)}
+        </div>
+        <div style={{display:"flex",gap:6,marginTop:8,paddingBottom:8}}>
+          {["7d","30d","90d"].map(r=><button key={r} className={`pill ${range===r?"on":""}`} style={{fontSize:11,padding:"6px 12px"}} onClick={()=>setRange(r)}>{r}</button>)}
+        </div>
+      </div>
+
+      <div style={{padding:"0 16px"}}>
+
+        {sec==="weight"&&(
+          <div className="fu">
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                <div><div style={{fontWeight:700}}>Scale Weight</div><div style={{fontSize:10,color:C.t2}}>Last {range}</div></div>
+                <button className="pill" style={{fontSize:10}} onClick={()=>dp({t:"MODAL",v:"addW"})}><Plus size={10}/> Log</button>
+              </div>
+              {wData.length>1?(
+                <>
+                  <SVGLineChart data={wData} dataKey="w" color={C.sodium} height={160}/>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:12}}>
+                    {[{l:"Current",v:wData[wData.length-1].w},{l:"Min",v:Math.min(...wData.map(d=>d.w))},{l:"Max",v:Math.max(...wData.map(d=>d.w))},{l:"Δ",v:wData.length>1?+(wData[wData.length-1].w-wData[0].w).toFixed(1):"—"}].map(({l,v})=>(
+                      <div key={l} style={{textAlign:"center",padding:"8px 4px",background:C.s3,borderRadius:9}}>
+                        <div style={{fontFamily:F.mn,fontSize:14}}>{v}</div>
+                        <div style={{fontSize:8,color:C.t2,marginTop:2}}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ):<Empty icon={<Scale size={28}/>} title="No weight data" sub={`Log daily weigh-ins for trend analysis`} onAct={()=>dp({t:"MODAL",v:"addW"})} actLabel="Log First Weight"/>}
+            </div>
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{fontWeight:700}}>Body Fat %</div>
+                <button className="pill" style={{fontSize:10}} onClick={()=>dp({t:"MODAL",v:"addBF"})}><Plus size={10}/> Log</button>
+              </div>
+              {mx.bodyfat.length>0?(
+                <SVGLineChart data={mx.bodyfat.slice(-nDays).map(b=>({date:b.date.slice(5),v:b.v} dataKey="v" color={C.protein} height={100}/>
+              ):<div style={{textAlign:"center",padding:16,color:C.t2,fontSize:12}}>Log BF% entries to see trend</div>}
+            </div>
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{fontWeight:700}}>Measurements</div>
+                <button className="pill" style={{fontSize:10}} onClick={()=>dp({t:"MODAL",v:"addMeas"})}><Plus size={10}/> Add</button>
+              </div>
+              {mx.measurements.length>0?(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  {Object.entries(mx.measurements[mx.measurements.length-1]).filter(([k])=>k!=="date"&&k!=="notes").map(([k,v])=>(
+                    <div key={k} className="card-xs">
+                      <div style={{fontSize:9,color:C.t2,textTransform:"capitalize"}}>{k.replace(/([A-Z])/g," $1")}</div>
+                      <div style={{fontFamily:F.mn,fontSize:18}}>{v}"</div>
+                    </div>
+                  ))}
+                </div>
+              ):<div style={{textAlign:"center",padding:16,color:C.t2,fontSize:12}}>No measurements yet</div>}
+            </div>
+          </div>
+        )}
+
+        {sec==="nutrition"&&(
+          <div className="fu">
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{fontWeight:700,marginBottom:8}}>Calorie Intake</div>
+              <SVGBarChart data={nData} dataKey="cal" height={150}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              {[{l:"Avg Protein",k:"p",c:C.protein,u:"g"},{l:"Avg Fat",k:"f",c:C.fat,u:"g"},{l:"Avg Carbs",k:"c",c:C.carbs,u:"g"},{l:"Avg Cal",k:"cal",c:C.cal,u:"kcal"}].map(({l,k,c,u})=>{
+                const vals=nData.filter(d=>d[k]>0);
+                const avg=vals.length?Math.round(vals.reduce((s,d)=>s+d[k],0)/vals.length):null;
+                const tgtK={p:"p",f:"f",c:"c",cal:"cal"}[k];
+                return(
+                  <div key={k} className="card">
+                    <div style={{fontSize:11,color:C.t1}}>{l}</div>
+                    <div style={{fontFamily:F.mn,fontSize:24,color:c,marginTop:4}}>{avg||"—"}<span style={{fontSize:10,color:C.t2}}> {u}</span></div>
+                    {tg[tgtK]&&avg&&<>
+                      <div className="btr" style={{marginTop:8}}><div className="btf" style={{width:`${clamp(pct(avg,tg[tgtK]),0,100)}%`,background:c}}/></div>
+                      <div style={{fontSize:9,color:C.t2,marginTop:3}}>vs {tg[tgtK]}{u} target</div>
+                    </>}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{fontWeight:700,marginBottom:8}}>Macro Split Trend</div>
+              <SVGLineChart data={nData.slice(-14)} dataKey="p" color={C.protein} height={120}/>
+            </div>
+          </div>
+        )}
+
+        {sec==="electrolytes"&&(
+          <div className="fu">
+            {[{l:"Sodium Intake",k:"na",c:C.sodium,u:"mg",tk:"na"},{l:"Potassium Intake",k:"k",c:C.potassium,u:"mg",tk:"k"}].map(({l,k,c,u,tk})=>(
+              <div key={k} className="card" style={{marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                  <div style={{fontWeight:700}}>{l}</div>
+                  {tg[tk]&&<span style={{fontFamily:F.mn,fontSize:11,color:c}}>target: {tg[tk]}{u}</span>}
+                </div>
+                <SVGBarChart data={nData} dataKey="cal" height={110}/>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:10}}>
+                  <div><div style={{fontSize:10,color:C.t2}}>Today</div><div style={{fontFamily:F.mn,fontSize:20,color:c}}>{sumDay(logs[td()])[k]||0}<span style={{fontSize:10,color:C.t2}}>{u}</span></div></div>
+                  {tg[tk]&&<div style={{textAlign:"right"}}><div style={{fontSize:10,color:C.t2}}>Target</div><div style={{fontFamily:F.mn,fontSize:20}}>{tg[tk]}<span style={{fontSize:10,color:C.t2}}>{u}</span></div></div>}
+                </div>
+              </div>
+            ))}
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{fontWeight:700}}>Daily Hydration</div>
+                <button className="pill" style={{fontSize:10}} onClick={()=>dp({t:"MODAL",v:"addH"})}><Plus size={10}/> Log</button>
+              </div>
+              <SVGBarChart data={wData2} dataKey="L" color={C.water} refLine={tg.w} height={100}/>
+            </div>
+          </div>
+        )}
+
+        {sec==="recovery"&&(
+          <div className="fu">
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{fontWeight:700}}>Digestion Score</div>
+                <button className="pill" style={{fontSize:10}} onClick={()=>dp({t:"MODAL",v:"addDig"})}><Plus size={10}/> Log</button>
+              </div>
+              <div style={{fontSize:12,color:C.t1,marginBottom:12,lineHeight:1.5}}>Track gut health, fullness, and GI status across prep. Correlates with your food and sodium data.</div>
+              {dData.length>0?(
+                <>
+                  <SVGLineChart data={dData} dataKey="s" color={C.potassium} height={100}/>
+                  <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:12}}>
+                    {mx.digestion.slice(-4).reverse().map((d,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 12px",background:C.s3,borderRadius:10}}>
+                        <span style={{fontSize:18}}>{["","🤢","😕","😐","😊","💪"][d.score]}</span>
+                        <div style={{flex:1}}><div style={{fontSize:11,color:C.t2}}>{fmtDs(d.date)}</div>{d.notes&&<div style={{fontSize:12}}>{d.notes}</div>}</div>
+                        <div style={{fontFamily:F.mn,fontSize:18,color:[C.danger,C.danger,C.warn,C.warn,C.ok,C.ok][d.score]}}>{d.score}/5</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ):<Empty icon={<Activity size={24}/>} title="No entries yet" sub="Log daily digestion scores to surface prep patterns" onAct={()=>dp({t:"MODAL",v:"addDig"})} actLabel="Log Today"/>}
+            </div>
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{fontWeight:700}}>Gym Performance</div>
+                <button className="pill" style={{fontSize:10}} onClick={()=>dp({t:"MODAL",v:"addPerf"})}><Plus size={10}/> Log</button>
+              </div>
+              {mx.performance.length>0?(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {mx.performance.slice(-3).reverse().map((p,i)=>(
+                    <div key={i} style={{padding:"10px 12px",background:C.s3,borderRadius:10}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                        <span style={{fontSize:11,color:C.t2}}>{fmtDs(p.date)}</span>
+                        {p.notes&&<span style={{fontSize:11,color:C.t1}}>{p.notes}</span>}
+                      </div>
+                      <div style={{display:"flex",gap:12}}>
+                        {[["💪","Pumps",p.pumps,C.protein],["⚡","Energy",p.energy,C.fat],["🎯","Fullness",p.fullness,C.carbs]].map(([e,l,v,c])=>(
+                          <div key={l} style={{textAlign:"center"}}><div style={{fontSize:14}}>{e}</div><div style={{fontFamily:F.mn,fontSize:13,color:c}}>{v}/5</div><div style={{fontSize:9,color:C.t2}}>{l}</div></div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ):<div style={{textAlign:"center",padding:16,color:C.t2,fontSize:12}}>Log gym sessions to track performance vs nutrition</div>}
+            </div>
+          </div>
+        )}
+
+        {sec==="photos"&&(
+          <div className="fu">
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+                <div><div style={{fontWeight:700}}>Progress Photos</div><div style={{fontSize:10,color:C.t2}}>Timeline</div></div>
+                <button className="pill" style={{fontSize:10}}><Camera size={10}/> Add Photo</button>
+              </div>
+              {mx.photos.length>0?(
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+                  {mx.photos.map((p,i)=>(
+                    <div key={i} style={{aspectRatio:"3/4",background:C.s4,borderRadius:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",border:`1px solid ${C.b1}`}}>
+                      <Camera size={20} color={C.t2}/>
+                      <div style={{fontSize:9,color:C.t2,marginTop:4}}>{fmtDs(p.date)}</div>
+                    </div>
+                  ))}
+                </div>
+              ):<Empty icon={<Camera size={28}/>} title="No photos yet" sub="Add progress photos to track visual changes throughout prep"/>}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// ── MORE ───────────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function More({st,dp}){
+  const{profile:pr}=st;
+  const SECS=[
+    {title:"General",items:[{icon:<User size={15}/>,l:"Account"},{icon:<Star size={15}/>,l:"Subscription"},{icon:<Settings size={15}/>,l:"Units & Display"},{icon:<RefreshCw size={15}/>,l:"Integrations"}]},
+    {title:"Feature Settings",items:[{icon:<LayoutDashboard size={15}/>,l:"Dashboard"},{icon:<UtensilsCrossed size={15}/>,l:"Food Log"},{icon:<Target size={15}/>,l:"Strategy"},{icon:<BarChart2 size={15}/>,l:"Analytics"}]},
+    {title:"Prep Tools",items:[
+      {icon:<Calendar size={15}/>,l:"Contest Date",a:()=>dp({t:"MODAL",v:"contestDate"})},
+      {icon:<Dumbbell size={15}/>,l:"Peak Week Planner"},
+      {icon:<Camera size={15}/>,l:"Progress Photos",a:()=>{dp({t:"TAB",v:"analytics"});dp({t:"UI",v:{aSec:"photos"}})}},
+      {icon:<Brain size={15}/>,l:"AI Food Analysis",a:()=>dp({t:"MODAL",v:{type:"addFood",meal:"Midday",date:td()}})},
+    ]},
+    {title:"Data Management",items:[{icon:<Download size={15}/>,l:"Export Data"},{icon:<Trash2 size={15}/>,l:"Delete Account",danger:true}]},
+  ];
+  return(
+    <div className="screen">
+      <div className="hdr" style={{paddingBottom:12}}>
+        <div style={{fontFamily:F.hd,fontSize:44,fontWeight:900,lineHeight:.95}}>MORE</div>
+      </div>
+      <div style={{padding:"0 16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:14,padding:"14px 0 18px"}}>
+          <div style={{width:52,height:52,borderRadius:"50%",background:C.s3,border:`2px solid ${C.b2}`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F.hd,fontWeight:800,fontSize:18}}>{pr.initials||"—"}</div>
+          <div>
+            <div style={{fontWeight:700,fontSize:16}}>{pr.name||"Athlete"}</div>
+            <div style={{fontSize:11,color:C.t2}}>Member since {pr.memberSince?new Date(pr.memberSince).toLocaleDateString("en-US",{month:"long",year:"numeric"}):"—"}</div>
+          </div>
+        </div>
+        {SECS.map(sec=>(
+          <div key={sec.title} style={{marginBottom:20}}>
+            <div className="st" style={{marginTop:0}}>{sec.title}</div>
+            <div style={{background:C.s2,borderRadius:14,border:`1px solid ${C.b1}`,overflow:"hidden"}}>
+              {sec.items.map(({icon,l,a,danger})=>(
+                <div key={l} className="row" style={{padding:"14px 16px",cursor:"pointer"}} onClick={a||undefined}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <span style={{color:danger?C.danger:C.t1}}>{icon}</span>
+                    <span style={{fontSize:15,color:danger?C.danger:C.t0}}>{l}</span>
+                  </div>
+                  <ChevronRight size={15} color={C.t3}/>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <div style={{textAlign:"center",padding:"10px 0 24px",color:C.t3,fontSize:11}}>IronIQ v2.0 · Built for Serious Athletes</div>
+      </div>
+    </div>
+  );
+}
+
+// ── ADD FOOD MODAL ─────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function AddFoodModal({md,st,dp,toast}){
+  const{meal,date}=md;
+  const[tab,setTab]=useState("quick");
+  const[prompt,setPrompt]=useState("");
+  const[imgData,setImgData]=useState(null);
+  const[imgUrl,setImgUrl]=useState(null);
+  const[loading,setLoading]=useState(false);
+  const[result,setResult]=useState(null);
+  const[err,setErr]=useState(null);
+  const fileRef=useRef();
+  const[f,setF]=useState({name:"",cal:"",p:"",f:"",c:"",na:"",k:"",fb:"",amount:"",emoji:""});
+  const totToday=sumDay(st.logs[date]);
+
+  function logEntry(e){
+    dp({t:"LOG_FOOD",date,meal,entry:{...e,cal:+e.cal||0,p:+e.p||0,f:+e.f||0,c:+e.c||0,na:+e.na||0,k:+e.k||0,fb:+e.fb||0,emoji:e.emoji||"🍽️",loggedAt:new Date().toISOString()}});
+    toast(`Logged: ${e.name}`);
+    dp({t:"MODAL",v:null});
+  }
+
+  function handleImg(e){
+    const file=e.target.files?.[0]; if(!file)return;
+    setImgUrl(URL.createObjectURL(file));
+    const r=new FileReader();
+    r.onload=ev=>setImgData(ev.target.result.split(",")[1]);
+    r.readAsDataURL(file);
+    setResult(null);setErr(null);
+  }
+
+  async function analyze(){
+    if(!prompt.trim()&&!imgData)return;
+    setLoading(true);setResult(null);setErr(null);
+    try{
+      const parts=[];
+      if(imgData) parts.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:imgData}});
+      parts.push({type:"text",text:`Analyze this food${imgData&&prompt?` with description: "${prompt}"`:imgData?"":`": "${prompt}"`}. Return ONLY a valid JSON object (no markdown, no preamble): {"name":string,"cal":number,"p":number,"f":number,"c":number,"na":number(mg),"k":number(mg),"fb":number(g),"amount":string,"emoji":string,"confidence":"high"|"medium"|"low","notes":string}`});
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:parts}]})});
+      const data=await res.json();
+      const txt=data.content?.map(c=>c.text||"").join("")||"";
+      setResult(JSON.parse(txt.replace(/```json|```/g,"").trim()));
+    }catch(e){setErr("Analysis failed. Log manually or try again.");}
+    setLoading(false);
+  }
+
+  const macroKcal=(+f.p||0)*4+(+f.f||0)*9+(+f.c||0)*4;
+
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh">
+        <div className="hdl"/>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 16px 0"}}>
+          <div><div style={{fontSize:10,color:C.t2}}>Adding to {meal}</div><div style={{fontWeight:700,fontSize:17}}>Log Food</div></div>
+          <div style={{display:"flex",gap:8}}>
+            <span className="cb">{totToday.cal} / {st.targets.cal||"—"}</span>
+            <button className="ib" onClick={()=>dp({t:"MODAL",v:null})}><X size={14}/></button>
+          </div>
+        </div>
+        <div style={{display:"flex",borderBottom:`1px solid ${C.b0}`,padding:"0 16px",marginTop:8}}>
+          {[{id:"quick",l:"Quick Add"},{id:"ai",l:"AI"},{id:"scan",l:"Scan"}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{background:"none",border:"none",color:tab===t.id?C.t0:C.t2,fontSize:13,fontWeight:600,padding:"10px 14px",cursor:"pointer",borderBottom:`2.5px solid ${tab===t.id?C.t0:"transparent"}`,fontFamily:F.bd}}>
+              {t.l}{t.id==="ai"&&<span className="ab" style={{marginLeft:6}}>AI</span>}
+            </button>
+          ))}
+        </div>
+        <div style={{padding:"16px",maxHeight:"60vh",overflowY:"auto"}}>
+
+          {tab==="quick"&&(
+            <div>
+              <div style={{marginBottom:12}}><div className="il">Food Name *</div><input className="inp" placeholder="e.g. 93% Lean Ground Beef" autoFocus value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))}/></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                {[{k:"cal",l:"Calories",u:"kcal",c:C.cal},{k:"p",l:"Protein",u:"g",c:C.protein},{k:"f",l:"Fat",u:"g",c:C.fat},{k:"c",l:"Carbs",u:"g",c:C.carbs},{k:"na",l:"Sodium",u:"mg",c:C.sodium},{k:"k",l:"Potassium",u:"mg",c:C.potassium},{k:"fb",l:"Fiber",u:"g",c:C.fiber},{k:"amount",l:"Amount",u:"",c:C.t2}].map(({k,l,u,c})=>(
+                  <div key={k}><div className="il" style={{color:c}}>{l}{u&&` (${u})`}</div><input className="inp" type={k==="amount"?"text":"number"} placeholder={k==="amount"?"200g":"0"} style={{padding:"10px 12px",fontSize:14}} value={f[k]} onChange={e=>setF(p=>({...p,[k]:e.target.value}))}/></div>
+                ))}
+              </div>
+              {(f.p||f.f||f.c)&&f.cal&&<div style={{padding:"8px 12px",background:Math.abs(macroKcal-(+f.cal||0))<40?`${C.ok}18`:`${C.warn}18`,borderRadius:8,fontSize:11,color:Math.abs(macroKcal-(+f.cal||0))<40?C.ok:C.warn,marginBottom:12}}>Macro sum: {macroKcal} kcal vs {f.cal} entered{Math.abs(macroKcal-(+f.cal||0))>40?" — verify values":""}</div>}
+              <div style={{marginBottom:14}}><div className="il">Emoji</div><input className="inp" maxLength={2} placeholder="🍗" value={f.emoji} style={{width:54,textAlign:"center",fontSize:22,padding:"8px"}} onChange={e=>setF(p=>({...p,emoji:e.target.value}))}/></div>
+              <button className="btn-p" disabled={!f.name} onClick={()=>logEntry(f)}>Log to {meal}</button>
+            </div>
+          )}
+
+          {tab==="ai"&&(
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><div style={{fontWeight:600,fontSize:14}}>AI Nutrition Analysis</div><span className="ab">Claude Vision</span></div>
+              <p style={{fontSize:12,color:C.t1,lineHeight:1.6,marginBottom:16}}>Upload a photo and/or describe your meal. Claude estimates nutrition. Always verify against known sources — AI estimates are not guaranteed.</p>
+              <input type="file" ref={fileRef} accept="image/*" onChange={handleImg} style={{display:"none"}}/>
+              <div style={{marginBottom:12}}>
+                <div className="il">Photo (optional)</div>
+                <div style={{display:"flex",gap:8}}>
+                  <button className="btn-g" style={{flex:1,padding:"11px 0",fontSize:13}} onClick={()=>fileRef.current?.click()}><Camera size={14} style={{verticalAlign:"middle",marginRight:6}}/>Upload Photo</button>
+                  {imgUrl&&<div style={{width:50,height:50,borderRadius:8,overflow:"hidden",flexShrink:0}}><img src={imgUrl} style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
+                </div>
+              </div>
+              <div style={{marginBottom:14}}><div className="il">Description (optional)</div><textarea className="inp" rows={3} style={{resize:"none",lineHeight:1.5}} placeholder="e.g. 6oz grilled chicken breast, 1 cup white rice, steamed broccoli" value={prompt} onChange={e=>setPrompt(e.target.value)}/></div>
+              <button className="btn-p" onClick={analyze} disabled={loading||(!prompt.trim()&&!imgData)}>{loading?"Analyzing…":"Analyze"}</button>
+              {err&&<div style={{marginTop:12,padding:"10px 14px",background:`${C.danger}18`,borderRadius:10,border:`1px solid ${C.danger}35`,fontSize:12,color:C.danger}}>{err}</div>}
+              {result&&!loading&&(
+                <div style={{marginTop:16}}>
+                  <div style={{padding:"8px 14px",marginBottom:12,borderRadius:10,background:result.confidence==="high"?`${C.ok}18`:`${C.warn}18`,border:`1px solid ${result.confidence==="high"?C.ok:C.warn}35`}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:12,fontWeight:600,color:result.confidence==="high"?C.ok:C.warn}}>{result.confidence==="high"?"High Confidence":"Review Before Logging"}</span><span style={{fontSize:10,color:C.t2}}>{result.confidence}</span></div>
+                    {result.notes&&<p style={{fontSize:11,color:C.t1,marginTop:3}}>{result.notes}</p>}
+                  </div>
+                  <div style={{padding:"12px 14px",background:C.s3,borderRadius:12,border:`1px solid ${C.b2}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                      <div><div style={{fontSize:15,fontWeight:700}}>{result.emoji} {result.name}</div><div style={{fontSize:11,color:C.t2}}>{result.amount}</div></div>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}}>
+                      {[{l:"Cal",v:result.cal,u:"kcal",c:C.cal},{l:"Protein",v:result.p,u:"g",c:C.protein},{l:"Fat",v:result.f,u:"g",c:C.fat},{l:"Carbs",v:result.c,u:"g",c:C.carbs},{l:"Sodium",v:result.na,u:"mg",c:C.sodium},{l:"Potassium",v:result.k,u:"mg",c:C.potassium}].map(({l,v,u,c})=>(
+                        <div key={l} style={{background:C.s4,borderRadius:8,padding:"7px 8px"}}><div style={{fontSize:9,color:C.t2}}>{l}</div><div style={{fontFamily:F.mn,fontSize:13,color:c}}>{v}<span style={{fontSize:9}}>{u}</span></div></div>
+                      ))}
+                    </div>
+                    <button className="btn-p" onClick={()=>logEntry(result)}>Log This Food</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab==="scan"&&(
+            <div style={{textAlign:"center",padding:"30px 0"}}>
+              <ScanLine size={40} color={C.t2} style={{margin:"0 auto 12px"}}/>
+              <div style={{fontWeight:600,fontSize:15,marginBottom:6}}>Barcode Scanner</div>
+              <div style={{fontSize:12,color:C.t1,marginBottom:20}}>Scan a product barcode to pull nutrition info automatically.</div>
+              <button className="btn-g" style={{width:"auto",padding:"12px 28px"}}>Open Camera</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── WEIGHT MODAL ───────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function AddWeightModal({dp,toast}){
+  const[w,setW]=useState(""), [time,setTime]=useState("morning"), [notes,setNotes]=useState("");
+  function save(){if(!w)return;dp({t:"LOG_W",v:{date:td(),w:+w,time,notes,at:new Date().toISOString()}});toast("Weight logged");dp({t:"MODAL",v:null});}
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:4,marginTop:6}}>Log Weight</div>
+        <div style={{fontSize:12,color:C.t1,lineHeight:1.6,marginBottom:20}}>Consistent weigh-in conditions (same time, same state) produce the most accurate trend data.</div>
+        <div style={{marginBottom:16}}><div className="il">Bodyweight (lbs)</div><input className="inp" type="number" step="0.1" autoFocus placeholder="185.4" value={w} onChange={e=>setW(e.target.value)} style={{fontSize:28,textAlign:"center",fontFamily:F.hd,fontWeight:700}}/></div>
+        <div style={{marginBottom:16}}><div className="il">Time of Day</div><div style={{display:"flex",gap:8}}>{["morning","midday","evening"].map(t=><button key={t} className={`pill ${time===t?"on":""}`} style={{flex:1,justifyContent:"center",textTransform:"capitalize"}} onClick={()=>setTime(t)}>{t}</button>)}</div></div>
+        <div style={{marginBottom:20}}><div className="il">Notes (optional)</div><input className="inp" placeholder="e.g. High carb day, water load, fasted..." value={notes} onChange={e=>setNotes(e.target.value)}/></div>
+        <button className="btn-p" onClick={save} disabled={!w}>Log Weight</button>
+      </div>
+    </div>
+  );
+}
+
+// ── BF % MODAL ─────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function AddBFModal({dp,toast}){
+  const[v,setV]=useState(""), [method,setMethod]=useState("visual");
+  function save(){if(!v)return;dp({t:"LOG_BF",v:{date:td(),v:+v,method,at:new Date().toISOString()}});toast("Body fat logged");dp({t:"MODAL",v:null});}
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:16,marginTop:6}}>Log Body Fat %</div>
+        <div style={{marginBottom:16}}><div className="il">Body Fat %</div><input className="inp" type="number" step="0.1" autoFocus placeholder="12.5" value={v} onChange={e=>setV(e.target.value)} style={{fontSize:28,textAlign:"center",fontFamily:F.hd,fontWeight:700}}/></div>
+        <div style={{marginBottom:20}}><div className="il">Method</div><div className="sr">{["visual","calipers","DEXA","BIA","Navy"].map(m=><button key={m} className={`pill ${method===m?"on":""}`} onClick={()=>setMethod(m)}>{m}</button>)}</div></div>
+        <button className="btn-p" onClick={save} disabled={!v}>Log Body Fat</button>
+      </div>
+    </div>
+  );
+}
+
+// ── MEASUREMENTS MODAL ─────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function AddMeasModal({dp,toast}){
+  const FIELDS=[{k:"chest",l:"Chest"},{k:"waist",l:"Waist"},{k:"hips",l:"Hips"},{k:"rightArm",l:"R. Arm"},{k:"leftArm",l:"L. Arm"},{k:"rightThigh",l:"R. Thigh"},{k:"leftThigh",l:"L. Thigh"},{k:"neck",l:"Neck"}];
+  const[vals,setVals]=useState({}), [notes,setNotes]=useState("");
+  function save(){
+    const has=Object.values(vals).some(v=>v!=="");if(!has)return;
+    const out={date:td(),notes};FIELDS.forEach(({k})=>{if(vals[k])out[k]=+vals[k];});
+    dp({t:"LOG_MEAS",v:out});toast("Measurements logged");dp({t:"MODAL",v:null});
+  }
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:16,marginTop:6}}>Log Measurements</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+          {FIELDS.map(({k,l})=>(
+            <div key={k}><div className="il">{l} (in)</div><input className="inp" type="number" step="0.25" placeholder="0.0" style={{padding:"10px 12px",fontSize:14}} value={vals[k]||""} onChange={e=>setVals(p=>({...p,[k]:e.target.value}))}/></div>
+          ))}
+        </div>
+        <div style={{marginBottom:16}}><div className="il">Notes</div><input className="inp" placeholder="Pump, time of day, condition..." value={notes} onChange={e=>setNotes(e.target.value)}/></div>
+        <button className="btn-p" onClick={save}>Save Measurements</button>
+      </div>
+    </div>
+  );
+}
+
+// ── HYDRATION MODAL ────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function AddHydrationModal({dp,toast}){
+  const[l,setL]=useState("");
+  function add(n){setL(v=>(+(+v||0)+n).toFixed(2));}
+  function save(){if(!l)return;dp({t:"LOG_H",v:{date:td(),liters:+l,at:new Date().toISOString()}});toast(`${l}L water logged`);dp({t:"MODAL",v:null});}
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:16,marginTop:6}}>Log Water</div>
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <Droplets size={36} color={C.water} style={{margin:"0 auto 8px"}}/>
+          <input className="inp" type="number" step="0.1" placeholder="0.0" value={l} onChange={e=>setL(e.target.value)} style={{fontSize:32,textAlign:"center",fontFamily:F.hd,fontWeight:700,color:C.water,width:"50%"}}/>
+          <div style={{fontSize:11,color:C.t2,marginTop:4}}>liters</div>
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:20}}>{[0.25,0.33,0.5,1.0].map(p=><button key={p} className="pill" onClick={()=>add(p)} style={{fontSize:12}}>+{p}L</button>)}</div>
+        <button className="btn-p" onClick={save} disabled={!l}>Log Water</button>
+      </div>
+    </div>
+  );
+}
+
+// ── DIGESTION MODAL ────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function AddDigModal({dp,toast}){
+  const[score,setScore]=useState(3), [notes,setNotes]=useState("");
+  const SCORES=[{v:1,e:"🤢",l:"Rough"},{v:2,e:"😕",l:"Below Avg"},{v:3,e:"😐",l:"Average"},{v:4,e:"😊",l:"Good"},{v:5,e:"💪",l:"Optimal"}];
+  function save(){dp({t:"LOG_DIG",v:{date:td(),score,notes,at:new Date().toISOString()}});toast("Recovery logged");dp({t:"MODAL",v:null});}
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:4,marginTop:6}}>Log Digestion & Recovery</div>
+        <div style={{fontSize:12,color:C.t1,marginBottom:20,lineHeight:1.5}}>How is your gut, fullness, and recovery today? Correlates with your food log.</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6,marginBottom:16}}>
+          {SCORES.map(s=><div key={s.v} onClick={()=>setScore(s.v)} style={{textAlign:"center",padding:"10px 4px",borderRadius:12,cursor:"pointer",background:score===s.v?C.t0:C.s3,border:`1.5px solid ${score===s.v?C.t0:C.b2}`,transition:"all .15s"}}><div style={{fontSize:22}}>{s.e}</div><div style={{fontSize:9,marginTop:3,fontWeight:600,color:score===s.v?C.s0:C.t2}}>{s.l}</div></div>)}
+        </div>
+        <div style={{marginBottom:20}}><div className="il">Notes (optional)</div><input className="inp" placeholder="e.g. Bloated after refeed, tight midsection..." value={notes} onChange={e=>setNotes(e.target.value)}/></div>
+        <button className="btn-p" onClick={save}>Log Entry</button>
+      </div>
+    </div>
+  );
+}
+
+// ── PERFORMANCE MODAL ──────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function AddPerfModal({dp,toast}){
+  const[pumps,setPumps]=useState(3), [energy,setEnergy]=useState(3), [fullness,setFullness]=useState(3), [notes,setNotes]=useState("");
+  const Row=({label,val,set,color})=>(
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:13,fontWeight:600}}>{label}</span><span style={{fontFamily:F.mn,fontSize:13,color}}>{val}/5</span></div>
+      <input type="range" min={1} max={5} step={1} value={val} onChange={e=>set(+e.target.value)} style={{background:`linear-gradient(to right,${color} ${((val-1)/4)*100}%,${C.s4} ${((val-1)/4)*100}%)`}}/>
+    </div>
+  );
+  function save(){dp({t:"LOG_PERF",v:{date:td(),pumps,energy,fullness,notes,at:new Date().toISOString()}});toast("Gym performance logged");dp({t:"MODAL",v:null});}
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:4,marginTop:6}}>Log Gym Performance</div>
+        <div style={{fontSize:12,color:C.t1,marginBottom:20}}>Correlate with your nutrition for smarter weekly adjustments.</div>
+        <Row label="💪 Pumps"    val={pumps}    set={setPumps}    color={C.protein}/>
+        <Row label="⚡ Energy"   val={energy}   set={setEnergy}   color={C.fat}/>
+        <Row label="🎯 Fullness" val={fullness} set={setFullness} color={C.carbs}/>
+        <div style={{marginBottom:20}}><div className="il">Notes</div><input className="inp" placeholder="e.g. Quads flat, needed more carbs pre-workout..." value={notes} onChange={e=>setNotes(e.target.value)}/></div>
+        <button className="btn-p" onClick={save}>Log Performance</button>
+      </div>
+    </div>
+  );
+}
+
+// ── EDIT TARGETS MODAL ─────────────────────────────────────────────────
+function EditTargetsModal({st,dp,toast}){
+  const[tg,setTg]=useState({cal:st.targets.cal||"",p:st.targets.p||"",f:st.targets.f||"",c:st.targets.c||"",na:st.targets.na||"",k:st.targets.k||"",w:st.targets.w||"",fb:st.targets.fb||""});
+  function save(){const out={};Object.entries(tg).forEach(([k,v])=>{out[k]=v!==""?+v:null;});dp({t:"TARGETS",v:out});toast("Targets updated");dp({t:"MODAL",v:null});}
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:4,marginTop:6}}>Edit Targets</div>
+        <div style={{fontSize:12,color:C.t1,marginBottom:20,lineHeight:1.5}}>Your numbers. Clear a field to remove a target. The app never auto-adjusts without your input.</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1f",gap:10,marginBottom:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {[{k:"cal",l:"Calories",u:"kcal",c:C.cal},{k:"p",l:"Protein",u:"g",c:C.protein},{k:"f",l:"Fat",u:"g",c:C.fat},{k:"c",l:"Carbs",u:"g",c:C.carbs},{k:"na",l:"Sodium",u:"mg",c:C.sodium},{k:"k",l:"Potassium",u:"mg",c:C.potassium},{k:"w",l:"Water",u:"L",c:C.water},{k:"fb",l:"Fiber",u:"g",c:C.fiber}].map(({k,l,u,c})=>(
+              <div key={k}><div className="il" style={{color:c}}>{l} ({u})</div><input className="inp" type="number" placeholder="—" style={{padding:"10px 12px",fontSize:14}} value={tg[k]} onChange={e=>setTg(t=>({...t,[k]:e.target.value}))}/></div>
+            ))}
+          </div>
+        </div>
+        <button className="btn-p" onClick={save}>Save Targets</button>
+      </div>
+    </div>
+  );
+}
+
+// ── NEW GOAL MODAL ─────────────────────────────────────────────────────
+function NewGoalModal({st,dp,toast}){
+  const[goal,setGoal]=useState(st.strategy.goal||null);
+  function save(){if(!goal)return;dp({t:"STRATEGY",v:{goal}});toast("Goal updated");dp({t:"MODAL",v:null});}
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:4,marginTop:6}}>Set Goal</div>
+        <div style={{fontSize:12,color:C.t1,marginBottom:20}}>Phase context only — no targets are auto-generated.</div>
+        {[{id:"cut",icon:<TrendingDown size={16} color={C.protein}/>,l:"Cut / Contest Prep",d:"Systematic deficit toward stage conditioning"},{id:"maintain",icon:<Activity size={16} color={C.carbs}/>,l:"Maintenance",d:"Hold weight, optimize composition"},{id:"bulk",icon:<TrendingUp size={16} color={C.fat}/>,l:"Offseason / Bulk",d:"Caloric surplus for muscle growth"},{id:"prep",icon:<Star size={16} color={C.sodium}/>,l:"Peak Week",d:"Final competition prep"}].map(g=>(
+          <div key={g.id} className={`go ${goal===g.id?"on":""}`} onClick={()=>setGoal(g.id)}>
+            <div style={{width:38,height:38,borderRadius:10,background:C.s4,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{g.icon}</div>
+            <div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{g.l}</div><div style={{fontSize:11,color:C.t1,marginTop:2}}>{g.d}</div></div>
+            <div className={`rad ${goal===g.id?"on":""}`}>{goal===g.id&&<div style={{width:8,height:8,borderRadius:"50%",background:C.s0}}/>}</div>
+          </div>
+        ))}
+        <button className="btn-p" style={{marginTop:8}} onClick={save} disabled={!goal}>Confirm Goal</button>
+      </div>
+    </div>
+  );
+}
+
+// ── NEW PROGRAM MODAL ──────────────────────────────────────────────────
+function NewProgModal({st,dp,toast}){
+  const[name,setName]=useState("Manual Program");
+  const[style,setStyle]=useState("flat");
+  const[cal,setCal]=useState(st.targets.cal||"");
+  const[p,setP]=useState(st.targets.p||"");
+  const[f,setF]=useState(st.targets.f||"");
+  const[c,setC]=useState(st.targets.c||"");
+  const[days,setDays]=useState(Array(7).fill(null).map(()=>({cal:"",p:"",f:"",c:""})));
+  const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  function setDay(i,k,v){setDays(d=>d.map((x,j)=>j===i?{...x,[k]:v}:x));}
+  function save(){
+    if(!cal)return;
+    const base={cal:+cal,p:+p||0,f:+f||0,c:+c||0};
+    const prog={name,style,...base,startDate:td(),days:style==="flat"?Array(7).fill(base):days.map((d,i)=>({cal:d.cal?+d.cal:base.cal,p:d.p?+d.p:base.p,f:d.f?+d.f:base.f,c:d.c?+d.c:base.c}))};
+    dp({t:"STRATEGY",v:{program:prog}});
+    dp({t:"TARGETS",v:{cal:+cal,p:+p||undefined,f:+f||undefined,c:+c||undefined}});
+    toast("Program created");dp({t:"MODAL",v:null});
+  }
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:16,marginTop:6}}>New Program</div>
+        <div style={{marginBottom:12}}><div className="il">Program Name</div><input className="inp" value={name} onChange={e=>setName(e.target.value)}/></div>
+        <div style={{marginBottom:16}}><div className="il">Style</div><div className="tabs"><div className={`tab ${style==="flat"?"on":""}`} onClick={()=>setStyle("flat")}>Flat (same daily)</div><div className={`tab ${style==="split"?"on":""}`} onClick={()=>setStyle("split")}>Day Split</div></div></div>
+        <div style={{marginBottom:12}}><div className="il" style={{marginBottom:8}}>{style==="split"?"Base / Default":"Daily"} Macros</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {[{k:"cal",v:cal,s:setCal,u:"kcal",c:C.cal},{k:"p",v:p,s:setP,u:"g",c:C.protein},{k:"f",v:f,s:setF,u:"g",c:C.fat},{k:"c",v:c,s:setC,u:"g",c:C.carbs}].map(({k,v,s,u,c})=>(
+              <div key={k}><div className="il" style={{color:c}}>{k} ({u})</div><input className="inp" type="number" placeholder="0" style={{padding:"10px 12px",fontSize:14}} value={v} onChange={e=>s(e.target.value)}/></div>
+            ))}
+          </div>
+        </div>
+        {style==="split"&&(
+          <div style={{marginBottom:12}}>
+            <div className="il" style={{marginBottom:8}}>Day Overrides (blank = use base)</div>
+            {DAYS.map((day,i)=>(
+              <div key={i} style={{marginBottom:8,padding:"10px 12px",background:C.s3,borderRadius:10}}>
+                <div style={{fontSize:11,fontWeight:600,marginBottom:8,color:C.t1}}>{day}</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                  {["cal","p","f","c"].map(k=><input key={k} className="inp" type="number" placeholder={k==="cal"?cal||"—":k==="p"?p||"—":k==="f"?f||"—":c||"—"} style={{padding:"7px 8px",fontSize:11}} value={days[i][k]} onChange={e=>setDay(i,k,e.target.value)}/>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="btn-p" onClick={save} disabled={!cal}>Create Program</button>
+      </div>
+    </div>
+  );
+}
+
+// ── CONTEST DATE MODAL ─────────────────────────────────────────────────
+function ContestDateModal({st,dp,toast}){
+  const[date,setDate]=useState(st.strategy.contestDate||"");
+  const wo=date?Math.ceil((new Date(date)-new Date())/(1000*60*60*24*7)):null;
+  function save(){dp({t:"STRATEGY",v:{contestDate:date||null}});toast(date?"Contest date set":"Contest date cleared");dp({t:"MODAL",v:null});}
+  return(
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:16}}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,marginBottom:16,marginTop:6}}>Contest Date</div>
+        <div style={{marginBottom:16}}><div className="il">Competition Date</div><input className="inp" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{fontSize:16}}/></div>
+        {wo!==null&&<div style={{padding:"12px 16px",background:"rgba(239,68,68,.12)",borderRadius:12,border:"1px solid rgba(239,68,68,.25)",marginBottom:16}}>
+          <span className="pt">Prep Mode</span>
+          <div style={{fontFamily:F.mn,fontSize:34,marginTop:8}}>{wo}<span style={{fontFamily:F.bd,fontSize:14,color:C.t1,fontWeight:400}}> weeks out</span></div>
+        </div>}
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn-p" onClick={save}>Save</button>
+          {st.strategy.contestDate&&<button className="btn-g" style={{flex:0,padding:"0 16px"}} onClick={()=>{setDate("");dp({t:"STRATEGY",v:{contestDate:null}});dp({t:"MODAL",v:null});}}>Clear</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── QUICK LOG MENU ─────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function QuickLog({st,dp}){
+  const ITEMS=[
+    {l:"Log Food",     ic:<UtensilsCrossed size={18}/>, c:C.cal,      a:()=>dp({t:"MODAL",v:{type:"addFood",meal:"Midday",date:st.ui.logDate}})},
+    {l:"Log Weight",   ic:<Scale size={18}/>,           c:C.sodium,   a:()=>dp({t:"MODAL",v:"addW"})},
+    {l:"Log Water",    ic:<Droplets size={18}/>,        c:C.water,    a:()=>dp({t:"MODAL",v:"addH"})},
+    {l:"Digestion",    ic:<Activity size={18}/>,        c:C.potassium,a:()=>dp({t:"MODAL",v:"addDig"})},
+    {l:"Performance",  ic:<Dumbbell size={18}/>,        c:C.protein,  a:()=>dp({t:"MODAL",v:"addPerf"})},
+    {l:"Measurements", ic:<BarChart2 size={18}/>,       c:C.fat,      a:()=>dp({t:"MODAL",v:"addMeas"})},
+    {l:"Body Fat %",   ic:<Target size={18}/>,          c:C.purple||"#B39DFA", a:()=>dp({t:"MODAL",v:"addBF"})},
+  ];
+  return(
+    <div className="ov" onClick={()=>dp({t:"MODAL",v:null})}>
+      <div className="sh" style={{padding:"16px 16px 32px"}} onClick={e=>e.stopPropagation()}>
+        <div className="hdl"/>
+        <div style={{fontWeight:700,fontSize:18,margin:"10px 0 16px"}}>Quick Log</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {ITEMS.map(({l,ic,c,a})=>(
+            <button key={l} onClick={a} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 12px",background:C.s2,border:`1px solid ${C.b1}`,borderRadius:13,color:C.t0,cursor:"pointer",textAlign:"left"}}>
+              <div style={{width:36,height:36,borderRadius:10,background:`${c}1A`,display:"flex",alignItems:"center",justifyContent:"center",color:c,flexShrink:0}}>{ic}</div>
+              <span style={{fontSize:13,fontWeight:500}}>{l}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── BOTTOM NAV ─────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function BottomNav({tab,dp,onFab}){
+  const ITEMS=[
+    {id:"dashboard",l:"Dashboard",ic:<LayoutDashboard size={19}/>},
+    {id:"foodlog",  l:"Food Log", ic:<UtensilsCrossed size={19}/>},
+    {id:"_fab",     l:"",         ic:null},
+    {id:"analytics",l:"Analytics",ic:<BarChart2 size={19}/>},
+    {id:"more",     l:"More",     ic:<MoreHorizontal size={19}/>},
+  ];
+  return(
+    <div style={{background:C.s0,borderTop:`1px solid ${C.b0}`,display:"flex",alignItems:"center",paddingBottom:"env(safe-area-inset-bottom,6px)",flexShrink:0,zIndex:50}}>
+      {ITEMS.map(item=>{
+        if(item.id==="_fab") return(
+          <div key="_fab" style={{flex:1,display:"flex",justifyContent:"center",alignItems:"center",padding:"6px 0"}}>
+            <button className="fab" onClick={onFab}><Plus size={22}/></button>
+          </div>
+        );
+        return(
+          <button key={item.id} className={`ni ${tab===item.id?"on":""}`} onClick={()=>dp({t:"TAB",v:item.id})}>
+            {item.ic}<span>{item.l}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── SEARCH BAR ─────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function SearchBar({dp,logDate}){
+  return(
+    <div style={{padding:"0 16px 8px",background:C.s0,borderTop:`1px solid ${C.b0}18`}}>
+      <div className="sw" onClick={()=>dp({t:"MODAL",v:{type:"addFood",meal:"Midday",date:logDate}})}>
+        <Search size={15} color={C.t2}/>
+        <span style={{flex:1,fontSize:14,color:C.t2}}>Search for a food</span>
+        <ScanLine size={15} color={C.t2}/>
+      </div>
+    </div>
+  );
+}
+
+// ── ROOT APP ───────────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel">
+function App(){
+  const[st,dp]=useReducer(reduce,INIT);
+  const{msg,show:toast}=useToast();
+
+  function renderModal(){
+    const{modal:m}=st;
+    if(!m) return null;
+    const pass={st,dp,toast};
+    if(m==="quickLog")   return <QuickLog st={st} dp={dp}/>;
+    if(m==="addW")       return <AddWeightModal dp={dp} toast={toast}/>;
+    if(m==="addBF")      return <AddBFModal dp={dp} toast={toast}/>;
+    if(m==="addMeas")    return <AddMeasModal dp={dp} toast={toast}/>;
+    if(m==="addH")       return <AddHydrationModal dp={dp} toast={toast}/>;
+    if(m==="addDig")     return <AddDigModal dp={dp} toast={toast}/>;
+    if(m==="addPerf")    return <AddPerfModal dp={dp} toast={toast}/>;
+    if(m==="editTgts")   return <EditTargetsModal {...pass}/>;
+    if(m==="newGoal")    return <NewGoalModal {...pass}/>;
+    if(m==="newProg")    return <NewProgModal {...pass}/>;
+    if(m==="contestDate")return <ContestDateModal {...pass}/>;
+    if(typeof m==="object"&&m.type==="addFood") return <AddFoodModal md={m} {...pass}/>;
+    return null;
+  }
+
+  function renderScreen(){
+    if(st.tab==="dashboard") return <Dashboard st={st} dp={dp}/>;
+    if(st.tab==="foodlog")   return <FoodLog   st={st} dp={dp}/>;
+    if(st.tab==="analytics") return <Analytics st={st} dp={dp}/>;
+    if(st.tab==="strategy")  return <Strategy  st={st} dp={dp}/>;
+    if(st.tab==="more")      return <More      st={st} dp={dp}/>;
+    return <Dashboard st={st} dp={dp}/>;
+  }
+
+  const showSearch=st.tab==="dashboard"||st.tab==="foodlog";
+
+  if(st.screen==="onboarding") return(
+    <><Styles/><div className="shell"><Onboarding st={st} dp={dp}/></div></>
+  );
+
+  return(
+    <>
+      <Styles/>
+      <div className="shell">
+        {renderScreen()}
+        {showSearch&&<SearchBar dp={dp} logDate={st.ui.logDate}/>}
+        <BottomNav tab={st.tab} dp={dp} onFab={()=>dp({t:"MODAL",v:"quickLog"})}/>
+        {renderModal()}
+        {msg&&<div className="toast">{msg}</div>}
+      </div>
+    </>
+  );
+}
+
+  </script>
+
+  <script type="text/babel">
+try {
+  document.getElementById('loading').style.display = 'none';
+  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+} catch(e) {
+  document.getElementById('loading').innerHTML = '<div style="color:#EF4444;padding:20px;font-size:13px;text-align:center"><b>Error</b><br/><pre style="font-size:10px;margin-top:8px;text-align:left;overflow:auto">' + (e.stack||e.message) + '</pre><button onclick="location.reload()" style="margin-top:12px;padding:10px 20px;background:#F0F0F0;color:#000;border:none;border-radius:8px;font-size:14px">Reload</button></div>';
+}
+  </script>
+</body>
+</html>
