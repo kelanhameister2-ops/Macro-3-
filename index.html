@@ -327,7 +327,7 @@ function useToast(){
 }
 
 // ── ONBOARDING ───────────────────────────────────────────────────────
-function Onboarding({st,dp}){
+function Onboarding({st,dp}){ // fixed
   const{step}=st.ob,TOTAL=5;
   const[name,setName]=useState('');
   const[bw,setBw]=useState('');
@@ -351,9 +351,9 @@ function Onboarding({st,dp}){
 
   const SLIM=['YOUR PROFILE','YOUR GOAL','PROGRAM STYLE','SET TARGETS',"LET'S GO"];
 
-  return h('div',{style:{height:'100vh',display:'flex',flexDirection:'column',background:'#080808'}},
+  return h('div',{style:{height:'100vh',display:'flex',flexDirection:'column',background:'#080808',position:'fixed',inset:0,overflow:'hidden'}},
     // Header
-    h('div',{style:{padding:'20px 20px 0'}},
+    h('div',{style:{padding:'20px 20px 0',flexShrink:0}},
       step>0&&h('button',{className:'ib',style:{marginBottom:12},onClick:()=>dp({t:'OB_BACK'})},h(Ico,{n:'left',size:16})),
       h('div',{className:'pll'},h('div',{className:'pf',style:{width:((step+1)/TOTAL*100)+'%'}})),
       h('div',{style:{display:'flex',justifyContent:'space-between',marginTop:6}},
@@ -362,7 +362,7 @@ function Onboarding({st,dp}){
       )
     ),
     // Body
-    h('div',{className:'screen fu',style:{padding:'24px 20px 20px'}},
+    h('div',{style:{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch',padding:'24px 20px 20px'}},
       step===0&&h('div',null,
         h('div',{className:'hd',style:{fontSize:44,fontWeight:900,lineHeight:.95,marginBottom:6}},'WHO',h('br'),'ARE YOU?'),
         h('p',{style:{fontSize:14,color:'#A0A0A0',marginBottom:28,lineHeight:1.6}},"This app tracks and analyzes. You own every number — nothing is fabricated."),
@@ -433,7 +433,7 @@ function Onboarding({st,dp}){
         )
       )
     ),
-    h('div',{style:{padding:'12px 20px 28px',background:'#080808'}},
+    h('div',{style:{padding:'12px 20px calc(28px + env(safe-area-inset-bottom, 0px))',background:'#080808',flexShrink:0,borderTop:'1px solid #181818'}},
       h('button',{className:'btn-p',onClick:next,disabled:!ok},step===TOTAL-1?'Launch IronIQ':'Continue')
     )
   );
